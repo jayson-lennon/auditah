@@ -3,15 +3,15 @@
 //! A license is not an identifier; it is a set of obligations and permissions.
 //! See `.plans/auditah/plan.md` for the full specification.
 
-mod cli;
-use auditah::AppError;
-use clap::{Parser, Subcommand};
-
-use cli::{
+use auditah::cli::command_to_exit_code;
+use auditah::cli::{
     add_cmd::AddCmd, audit_cmd::AuditCmd, credits_cmd::CreditsCmd,
-    init_licenses_cmd::InitLicensesCmd, init_pack_cmd::InitPackCmd,
+    init_licenses_cmd::InitLicensesCmd, init_pack_cmd::InitPackCmd, CommandStatus,
 };
+use clap::{Parser, Subcommand};
 use error_stack::Report;
+
+use auditah::AppError;
 
 /// Top-level CLI.
 #[derive(Debug, Parser)]
@@ -35,13 +35,23 @@ enum Command {
     InitPack(InitPackCmd),
 }
 
-fn main() -> Result<(), Report<AppError>> {
-    let cli = Cli::parse();
-    match cli.command {
-        Command::Audit(cmd) => cli::audit_cmd::run(&cmd),
-        Command::Credits(cmd) => cli::credits_cmd::run(&cmd),
-        Command::Add(cmd) => cli::add_cmd::run(&cmd),
-        Command::InitLicenses(cmd) => cli::init_licenses_cmd::run(&cmd),
-        Command::InitPack(cmd) => cli::init_pack_cmd::run(&cmd),
+/// Dispatch a parsed command to its handler and return its `CommandStatus`.
+fn dispatch(command: Command) -> Result<CommandStatus, Report<AppError>> {
+    match command {
+        Command::Audit(cmd) => auditah::cli::audit_cmd::run(&cmd),
+        Command::Credits(cmd) => auditah::cli::credits_cmd::run(&cmd),
+        Command::Add(cmd) => auditah::cli::add_cmd::run(&cmd),
+        Command::InitLicenses(cmd) => auditah::cli::init_licenses_cmd::run(&cmd),
+        Command::InitPack(cmd) => auditah::cli::init_pack_cmd::run(&cmd),
     }
+}
+
+fn main() {
+    let cli = Cli::parse();
+    let result = dispatch(cli.command);
+    let exit_code = command_to_exit_code(&result);
+    if let Err(report) = &result {
+        eprintln!("{report:?}");
+    }
+    std::process::exit(exit_code);
 }

@@ -7,6 +7,7 @@ use wherror::Error;
 
 pub mod add;
 pub mod audit;
+pub mod cli;
 pub mod config;
 pub mod credits;
 pub mod discovery;
