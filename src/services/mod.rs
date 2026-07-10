@@ -30,7 +30,7 @@ impl Services {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::fs::{FsBackend, FsError, RealFs};
+    use crate::services::fs::{FsBackend, FsError};
     use error_stack::Report;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
