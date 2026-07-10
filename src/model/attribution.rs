@@ -44,7 +44,7 @@ mod tests {
 title = "Gunny Sack"
 author = "Oliver Herklotz"
 year = 2019
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://poly.pizza/m/download/Gunny-Sack"
 "#;
 
@@ -66,7 +66,7 @@ source = "https://poly.pizza/m/download/Gunny-Sack"
 title = "Pack Item"
 author = "Author"
 year = 2020
-license = "CC-BY-4.0"
+license = "LicenseRef-CcBy4"
 source = "https://example.com"
 modified = true
 

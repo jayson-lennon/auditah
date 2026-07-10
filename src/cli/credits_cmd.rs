@@ -31,7 +31,7 @@ pub struct CreditsCmd {
 /// Returns an error if services, config load, or credit generation fail.
 pub fn run(cmd: &CreditsCmd) -> Result<CommandStatus, Report<AppError>> {
     let root = &cmd.root;
-    let services = Services::real().change_context(AppError)?;
+    let services = Services::real(root).change_context(AppError)?;
     let config = Config::load(&services.fs, root)
         .change_context(AppError)
         .attach("failed to load config")?;

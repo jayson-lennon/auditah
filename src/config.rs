@@ -166,7 +166,7 @@ exclude = ["vendor/**", "*.bak"]
         // Given a config with an acknowledged license id.
         let fs = fs_with(&[(
             "/proj/auditah.toml",
-            "manual_review_acknowledged = [\"LicenseRef-StudioEULA\", \"OFL-1.1\"]\n",
+            "manual_review_acknowledged = [\"LicenseRef-StudioEULA\", \"LicenseRef-Other\"]\n",
         )]);
 
         // When loading the config.
@@ -175,7 +175,7 @@ exclude = ["vendor/**", "*.bak"]
         // Then both acknowledged ids parse into the vec.
         assert_eq!(
             cfg.manual_review_acknowledged,
-            vec!["LicenseRef-StudioEULA", "OFL-1.1"]
+            vec!["LicenseRef-StudioEULA", "LicenseRef-Other"]
         );
     }
 

@@ -35,14 +35,11 @@ impl Services {
     /// # Errors
     ///
     /// Returns an `Err` if the license registry fails to load (toml parse or read failure).
-    pub fn real() -> Result<Self, Report<ServicesError>> {
+    pub fn real(root: &Path) -> Result<Self, Report<ServicesError>> {
         Ok(Self {
             fs: FsService::new(Arc::new(RealFs::new())),
-            registry: LicenseRegistry::load(
-                &FsService::new(Arc::new(RealFs::new())),
-                Path::new("."),
-            )
-            .change_context(ServicesError)?,
+            registry: LicenseRegistry::load(&FsService::new(Arc::new(RealFs::new())), root)
+                .change_context(ServicesError)?,
         })
     }
 
@@ -66,7 +63,7 @@ mod tests {
     fn services_real_constructs_without_panic() {
         // Given the real Services constructor.
         // When constructing real services.
-        let _services = Services::real();
+        let _services = Services::real(Path::new(".")).expect("real services");
 
         // Then construction succeeds (no panic).
     }
@@ -76,7 +73,7 @@ mod tests {
         // Given a Services with a FakeFs backend.
         let services = Services {
             fs: FsService::new(Arc::new(FakeFs::default())),
-            registry: LicenseRegistry::embedded_only(),
+            registry: LicenseRegistry::empty(),
         };
         let path = Path::new("/tmp/fake.txt");
 

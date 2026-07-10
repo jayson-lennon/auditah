@@ -25,9 +25,11 @@ pub struct LicenseRegistryEntry {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
+    use super::{LicenseRegistryEntry, LicenseTerms};
+
     fn cc0_entry() -> LicenseRegistryEntry {
         LicenseRegistryEntry {
-            id: "CC0-1.0".to_string(),
+            id: "LicenseRef-Cc0".to_string(),
             name: "Creative Commons Zero".to_string(),
             url: "https://creativecommons.org/publicdomain/zero/1.0/".to_string(),
             terms: LicenseTerms::permissive(),

@@ -85,6 +85,13 @@ impl LicenseTerms {
             manual_review: false,
         }
     }
+
+    /// Builder-style override of the `derivatives` field.
+    #[must_use]
+    pub fn with_derivatives(mut self, d: Derivatives) -> Self {
+        self.derivatives = d;
+        self
+    }
 }
 
 /// Per-asset term overrides. All fields optional — only set fields replace

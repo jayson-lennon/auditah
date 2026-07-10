@@ -225,7 +225,10 @@ source = "https://example.com"
         // Given an asset with a sidecar.
         let fs = fs_with(&[
             ("/proj/sword.glb", ""),
-            ("/proj/sword.glb.attr.toml", &fake_record_toml("CC-BY-3.0")),
+            (
+                "/proj/sword.glb.attr.toml",
+                &fake_record_toml("LicenseRef-CcBy"),
+            ),
         ]);
 
         // When resolving.
@@ -233,7 +236,7 @@ source = "https://example.com"
 
         // Then the sidecar is used and its license is parsed.
         assert!(matches!(r.source, ResolutionSource::Sidecar(_)));
-        assert_eq!(r.record.unwrap().license, "CC-BY-3.0");
+        assert_eq!(r.record.unwrap().license, "LicenseRef-CcBy");
     }
 
     #[test]
@@ -241,7 +244,10 @@ source = "https://example.com"
         // Given an asset with no sidecar but a directory manifest.
         let fs = fs_with(&[
             ("/proj/assets/sword.glb", ""),
-            ("/proj/assets/manifest.toml", &fake_record_toml("CC0-1.0")),
+            (
+                "/proj/assets/manifest.toml",
+                &fake_record_toml("LicenseRef-Cc0"),
+            ),
         ]);
 
         // When resolving.
@@ -249,14 +255,14 @@ source = "https://example.com"
 
         // Then the manifest is used and its license is parsed.
         assert!(matches!(r.source, ResolutionSource::Manifest(_)));
-        assert_eq!(r.record.unwrap().license, "CC0-1.0");
+        assert_eq!(r.record.unwrap().license, "LicenseRef-Cc0");
     }
 
     #[test]
     fn subdir_manifest_overrides_parent_manifest() {
         // Given a parent and subdir manifest with different licenses.
-        let parent = fake_record_toml("CC0-1.0");
-        let child = fake_record_toml("MIT");
+        let parent = fake_record_toml("LicenseRef-Cc0");
+        let child = fake_record_toml("LicenseRef-Mit");
         let fs = fs_with(&[
             ("/proj/manifest.toml", &parent),
             ("/proj/sub/manifest.toml", &child),
@@ -268,7 +274,7 @@ source = "https://example.com"
 
         // Then the subdir manifest wins (nearest).
         assert!(matches!(r.source, ResolutionSource::Manifest(_)));
-        assert_eq!(r.record.unwrap().license, "MIT");
+        assert_eq!(r.record.unwrap().license, "LicenseRef-Mit");
     }
 
     #[test]
@@ -276,8 +282,11 @@ source = "https://example.com"
         // Given a dir with both a manifest and a per-file sidecar.
         let fs = fs_with(&[
             ("/proj/sword.glb", ""),
-            ("/proj/sword.glb.attr.toml", &fake_record_toml("MIT")),
-            ("/proj/manifest.toml", &fake_record_toml("CC0-1.0")),
+            (
+                "/proj/sword.glb.attr.toml",
+                &fake_record_toml("LicenseRef-Mit"),
+            ),
+            ("/proj/manifest.toml", &fake_record_toml("LicenseRef-Cc0")),
         ]);
 
         // When resolving.
@@ -285,7 +294,7 @@ source = "https://example.com"
 
         // Then the sidecar wins over the manifest.
         assert!(matches!(r.source, ResolutionSource::Sidecar(_)));
-        assert_eq!(r.record.unwrap().license, "MIT");
+        assert_eq!(r.record.unwrap().license, "LicenseRef-Mit");
     }
 
     #[test]

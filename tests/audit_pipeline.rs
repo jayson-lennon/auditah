@@ -3,18 +3,24 @@
 //! cases table.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::sync::Arc;
-
-use auditah::audit::report::{FindingCode, Severity};
-use auditah::audit::{run_audit, AuditCtx};
-use auditah::config::Config;
-use auditah::registry::LicenseRegistry;
-use auditah::services::fs::{FsService, RealFs};
-use auditah::services::Services;
 use temptree::temptree;
 
 mod common;
-use common::{codes_for, non_commercial_config, seed_licenses, services};
+use auditah::audit::report::{FindingCode, Severity};
+use auditah::audit::{run_audit, AuditCtx};
+use auditah::config::Config;
+use auditah::model::terms::{Derivatives, LicenseTerms};
+use auditah::registry::LicenseSpec;
+use common::{
+    codes_for, non_commercial_config, permissive_terms, seed_license_text, services_with,
+};
+
+fn ccby_services() -> auditah::services::Services {
+    services_with([LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
+        requires_attribution: true,
+        ..permissive_terms()
+    })])
+}
 
 // Test case 1: uncovered asset → FAIL UnlicensedAsset.
 #[test]
@@ -22,7 +28,7 @@ fn uncovered_asset_fails_as_unlicensed() {
     // Given an uncovered asset with no sidecar or manifest.
     let tree = temptree! { "sword.glb": "binary" };
     let root = tree.path();
-    let svc = services();
+    let svc = ccby_services();
     let cfg = non_commercial_config();
     let ctx = AuditCtx {
         services: &svc,
@@ -47,12 +53,12 @@ fn uncovered_asset_fails_as_unlicensed() {
 fn orphan_sidecar_fails() {
     // Given a sidecar whose asset does not exist.
     let tree = temptree! {
-        "ghost.glb.attr.toml": "title = \"G\"\nauthor = \"A\"\nyear = 2020\nlicense = \"CC0-1.0\"\nsource = \"https://x\"\n",
+        "ghost.glb.attr.toml": "title = \"G\"\nauthor = \"A\"\nyear = 2020\nlicense = \"LicenseRef-Cc0\"\nsource = \"https://x\"\n",
         "real.glb": "binary",
-        "real.glb.attr.toml": "title = \"R\"\nauthor = \"A\"\nyear = 2020\nlicense = \"CC0-1.0\"\nsource = \"https://x\"\n"
+        "real.glb.attr.toml": "title = \"R\"\nauthor = \"A\"\nyear = 2020\nlicense = \"LicenseRef-Cc0\"\nsource = \"https://x\"\n"
     };
     let root = tree.path();
-    let svc = services();
+    let svc = ccby_services();
     let cfg = non_commercial_config();
     let ctx = AuditCtx {
         services: &svc,
@@ -81,12 +87,12 @@ fn unknown_license_id_fails() {
 title = "Rock"
 author = "A"
 year = 2020
-license = "GPL-3.0"
+license = "LicenseRef-Unknown"
 source = "https://example.com"
 "#
     };
     let root = tree.path();
-    let svc = services();
+    let svc = ccby_services();
     let cfg = non_commercial_config();
     let ctx = AuditCtx {
         services: &svc,
@@ -115,12 +121,12 @@ fn incomplete_attribution_missing_source_fails() {
 title = "Tile"
 author = "Quaternius"
 year = 2022
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = ""
 "#
     };
     let root = tree.path();
-    let svc = services();
+    let svc = ccby_services();
     let cfg = non_commercial_config();
     let ctx = AuditCtx {
         services: &svc,
@@ -149,7 +155,7 @@ fn non_commercial_asset_fails_under_commercial_project() {
 title = "Fanfare"
 author = "Musician"
 year = 2021
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://example.com"
 
 [overrides]
@@ -157,7 +163,7 @@ allows_commercial_use = false
 "#
     };
     let root = tree.path();
-    let svc = services();
+    let svc = ccby_services();
     let cfg = Config {
         commercial_project: true,
         redistributes_assets: false,
@@ -191,7 +197,7 @@ fn modified_under_no_derivatives_fails() {
 title = "Statue"
 author = "Sculptor"
 year = 2019
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://example.com"
 modified = true
 
@@ -200,7 +206,7 @@ derivatives = "disallowed"
 "#
     };
     let root = tree.path();
-    let svc = services();
+    let svc = ccby_services();
     let cfg = non_commercial_config();
     let ctx = AuditCtx {
         services: &svc,
@@ -229,7 +235,7 @@ fn share_alike_is_flag_not_fail() {
 title = "Viral"
 author = "A"
 year = 2020
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://example.com"
 
 [overrides]
@@ -237,8 +243,8 @@ derivatives = "share-alike"
 "#
     };
     let root = tree.path();
-    seed_licenses(root);
-    let svc = services();
+    seed_license_text(root, &["LicenseRef-CcBy"]);
+    let svc = ccby_services();
     let cfg = non_commercial_config();
     let ctx = AuditCtx {
         services: &svc,
@@ -274,7 +280,7 @@ fn override_commercial_under_non_commercial_project_passes() {
 title = "Ok"
 author = "A"
 year = 2020
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://example.com"
 
 [overrides]
@@ -282,8 +288,8 @@ allows_commercial_use = false
 "#
     };
     let root = tree.path();
-    seed_licenses(root);
-    let svc = services();
+    seed_license_text(root, &["LicenseRef-CcBy"]);
+    let svc = ccby_services();
     let cfg = non_commercial_config();
     let ctx = AuditCtx {
         services: &svc,
@@ -313,7 +319,7 @@ fn excluded_glob_asset_not_audited() {
         }
     };
     let root = tree.path();
-    let svc = services();
+    let svc = ccby_services();
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
@@ -346,11 +352,11 @@ fn redistribution_violation_fails_when_project_redistributes() {
     // Given a redistributing project and an asset whose license forbids redistribution.
     let tree = temptree! {
         "sword.glb": "binary",
-        "sword.glb.attr.toml": "title = \"Sword\"\nauthor = \"A\"\nyear = 2020\nlicense = \"CC-BY-3.0\"\nsource = \"https://x\"\n\n[overrides]\nallows_redistribution = false\n",
+        "sword.glb.attr.toml": "title = \"Sword\"\nauthor = \"A\"\nyear = 2020\nlicense = \"LicenseRef-CcBy\"\nsource = \"https://x\"\n\n[overrides]\nallows_redistribution = false\n",
     };
     let root = tree.path();
-    seed_licenses(root);
-    let svc = services();
+    seed_license_text(root, &["LicenseRef-CcBy"]);
+    let svc = ccby_services();
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: true,
@@ -380,11 +386,11 @@ fn redistribution_gate_inactive_when_project_does_not_redistribute() {
     // Given a non-redistributing project and an asset whose license forbids redistribution.
     let tree = temptree! {
         "sword.glb": "binary",
-        "sword.glb.attr.toml": "title = \"Sword\"\nauthor = \"A\"\nyear = 2020\nlicense = \"CC-BY-3.0\"\nsource = \"https://x\"\n\n[overrides]\nallows_redistribution = false\n",
+        "sword.glb.attr.toml": "title = \"Sword\"\nauthor = \"A\"\nyear = 2020\nlicense = \"LicenseRef-CcBy\"\nsource = \"https://x\"\n\n[overrides]\nallows_redistribution = false\n",
     };
     let root = tree.path();
-    seed_licenses(root);
-    let svc = services();
+    seed_license_text(root, &["LicenseRef-CcBy"]);
+    let svc = ccby_services();
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
@@ -425,28 +431,14 @@ fn manual_review_fails_until_acknowledged() {
         "LICENSES": {
             "LicenseRef-EULA.txt": "custom eula text\n"
         },
-        "licenses": {
-            "LicenseRef-EULA.toml": r#"
-id = "LicenseRef-EULA"
-name = "Bespoke EULA"
-url = "https://example.com/eula"
-text = "custom eula text"
-[terms]
-requires_attribution = true
-requires_license_notice = false
-requires_source_disclosure = false
-derivatives = "allowed"
-requires_modification_notice = false
-allows_commercial_use = true
-allows_redistribution = false
-manual_review = true
-"#
-        },
     };
     let root = tree.path();
-    let fs = FsService::new(Arc::new(RealFs::new()));
-    let registry = LicenseRegistry::load(&fs, root).unwrap();
-    let svc = Services { fs, registry };
+    let svc = services_with([LicenseSpec::new("LicenseRef-EULA").terms(LicenseTerms {
+        requires_attribution: true,
+        allows_redistribution: false,
+        manual_review: true,
+        ..permissive_terms()
+    })]);
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
@@ -480,28 +472,14 @@ fn manual_review_passes_when_acknowledged() {
         "LICENSES": {
             "LicenseRef-EULA.txt": "custom eula text\n"
         },
-        "licenses": {
-            "LicenseRef-EULA.toml": r#"
-id = "LicenseRef-EULA"
-name = "Bespoke EULA"
-url = "https://example.com/eula"
-text = "custom eula text"
-[terms]
-requires_attribution = true
-requires_license_notice = false
-requires_source_disclosure = false
-derivatives = "allowed"
-requires_modification_notice = false
-allows_commercial_use = true
-allows_redistribution = false
-manual_review = true
-"#
-        },
     };
     let root = tree.path();
-    let fs = FsService::new(Arc::new(RealFs::new()));
-    let registry = LicenseRegistry::load(&fs, root).unwrap();
-    let svc = Services { fs, registry };
+    let svc = services_with([LicenseSpec::new("LicenseRef-EULA").terms(LicenseTerms {
+        requires_attribution: true,
+        allows_redistribution: false,
+        manual_review: true,
+        ..permissive_terms()
+    })]);
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
@@ -544,13 +522,14 @@ fn embedded_ofl_audits_as_share_alike_flag_not_fail() {
 title = "Font"
 author = "A"
 year = 2020
-license = "OFL-1.1"
+license = "LicenseRef-Ofl"
 source = "https://example.com"
 "#,
     };
     let root = tree.path();
-    seed_licenses(root);
-    let svc = services();
+    seed_license_text(root, &["LicenseRef-Ofl"]);
+    let svc = services_with([LicenseSpec::new("LicenseRef-Ofl")
+        .terms(LicenseTerms::permissive().with_derivatives(Derivatives::ShareAlike))]);
     let cfg = non_commercial_config();
     let ctx = AuditCtx {
         services: &svc,
