@@ -28,6 +28,7 @@ fn ctx<'a>(svc: &'a Services, cfg: &'a Config, root: &'a std::path::Path) -> Cre
 // CC0 (attribution-free) assets are omitted from credits entirely.
 #[test]
 fn cc0_assets_are_omitted_from_credits() {
+    // Given a CC0 asset.
     let tree = temptree! {
         "rock.glb": "binary",
         "rock.glb.attr.toml": r#"
@@ -41,7 +42,11 @@ source = "https://poly.pizza"
     let root = tree.path();
     let svc = services();
     let cfg = non_commercial_config();
+
+    // When generating credits.
     let content = generated(&ctx(&svc, &cfg, root));
+
+    // Then the credits note no attribution-required assets and the CC0 asset is omitted.
     assert!(
         content.contains("_No attribution-required assets found._"),
         "CC0 should produce empty credits; got:\n{content}"
@@ -56,6 +61,7 @@ source = "https://poly.pizza"
 // sorted by title within each author group.
 #[test]
 fn cc_by_assets_grouped_by_author() {
+    // Given three CC-BY assets from two authors.
     let tree = temptree! {
         "a.glb": "binary",
         "a.glb.attr.toml": r#"
@@ -85,12 +91,13 @@ source = "https://example.com/c"
     let root = tree.path();
     let svc = services();
     let cfg = non_commercial_config();
+
+    // When generating credits.
     let content = generated(&ctx(&svc, &cfg, root));
 
-    // Both author headers present.
+    // Then both author headers are present and entries are title-sorted within each group.
     assert!(content.contains("## Oliver Herklotz"));
     assert!(content.contains("## Quaternius"));
-    // Alpha appears before Gamma (title sort) within Oliver's group.
     let alpha = content.find("**Alpha**").expect("Alpha missing");
     let gamma = content.find("**Gamma**").expect("Gamma missing");
     assert!(
@@ -102,6 +109,7 @@ source = "https://example.com/c"
 // Modification notice appears only when requires_modification_notice + modified.
 #[test]
 fn modification_notice_emitted_only_when_required_and_modified() {
+    // Given three CC-BY assets varying modified/notice flags.
     let tree = temptree! {
         // modified + requires_modification_notice (via override) → notice present
         "mod1.glb": "binary",
@@ -146,9 +154,11 @@ requires_modification_notice = true
     let root = tree.path();
     let svc = services();
     let cfg = non_commercial_config();
+
+    // When generating credits.
     let content = generated(&ctx(&svc, &cfg, root));
 
-    // Find each entry's line and check for the notice on it.
+    // Then the notice appears only for Mod1 (modified AND requires notice).
     for (title, expect_notice) in [("Mod1", true), ("Mod2", false), ("Mod3", false)] {
         let line = content
             .lines()
