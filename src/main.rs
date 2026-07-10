@@ -7,7 +7,8 @@ mod cli;
 use clap::{Parser, Subcommand};
 
 use cli::{
-    add_cmd::AddCmd, audit_cmd::AuditCmd, credits_cmd::CreditsCmd, init_pack_cmd::InitPackCmd,
+    add_cmd::AddCmd, audit_cmd::AuditCmd, credits_cmd::CreditsCmd,
+    init_licenses_cmd::InitLicensesCmd, init_pack_cmd::InitPackCmd,
 };
 
 /// Top-level CLI.
@@ -26,6 +27,8 @@ enum Command {
     Credits(CreditsCmd),
     /// Scaffold an attribution sidecar for a single asset.
     Add(AddCmd),
+    /// Write full license text files to LICENSES/.
+    InitLicenses(InitLicensesCmd),
     /// Write a directory manifest.toml covering a folder.
     InitPack(InitPackCmd),
 }
@@ -36,6 +39,7 @@ fn main() {
         Command::Audit(cmd) => cli::audit_cmd::run(&cmd),
         Command::Credits(cmd) => cli::credits_cmd::run(&cmd),
         Command::Add(cmd) => cli::add_cmd::run(&cmd),
+        Command::InitLicenses(cmd) => cli::init_licenses_cmd::run(&cmd),
         Command::InitPack(cmd) => cli::init_pack_cmd::run(&cmd),
     };
     std::process::exit(exit_code);
