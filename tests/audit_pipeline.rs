@@ -530,3 +530,46 @@ manual_review = true
         report.findings
     );
 }
+
+// Test case 13: embedded OFL-1.1 (share-alike, no override) audits with
+// ShareAlikeReview FLAG and no FAIL — parity with pre-redesign behavior.
+#[test]
+fn embedded_ofl_audits_as_share_alike_flag_not_fail() {
+    // Given an asset using the embedded OFL-1.1 license directly (no override),
+    // with seeded LICENSES/ text so MissingLicenseText does not fire.
+    let tree = temptree! {
+        "font.ttf": "binary",
+        "font.ttf.attr.toml": r#"
+title = "Font"
+author = "A"
+year = 2020
+license = "OFL-1.1"
+source = "https://example.com"
+"#,
+    };
+    let root = tree.path();
+    seed_licenses(root);
+    let svc = services();
+    let cfg = non_commercial_config();
+    let ctx = AuditCtx {
+        services: &svc,
+        config: &cfg,
+        root,
+    };
+
+    // When running the audit.
+    let report = run_audit(&ctx).unwrap();
+
+    // Then the embedded OFL-1.1 entry (derivatives = "share-alike") surfaces
+    // ShareAlikeReview as a non-blocking FLAG, and the audit does not FAIL.
+    let codes = codes_for(&report, "font");
+    assert!(
+        codes.contains(&FindingCode::ShareAlikeReview),
+        "expected ShareAlikeReview FLAG for embedded OFL, got {codes:?}"
+    );
+    assert!(
+        !report.has_failures(),
+        "expected OFL audit clean (FLAG only), got failures: {:?}",
+        report.findings
+    );
+}
