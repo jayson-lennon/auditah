@@ -18,8 +18,7 @@ pub const DEFAULT_EXCLUDES: &[&str] = &[
     // Sidecars + manifests themselves (they are metadata, not assets)
     "**/*.attr.toml",
     "**/manifest.toml",
-    // License registry dirs
-    "**/licenses/**",
+    // License definitions dir
     "**/LICENSES/**",
     // Build output
     "**/target/**",
