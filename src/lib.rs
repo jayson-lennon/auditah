@@ -15,6 +15,7 @@ pub mod discovery;
 pub mod model;
 pub mod registry;
 pub mod services;
+pub mod well_known;
 
 #[cfg(feature = "test-helper")]
 #[doc(hidden)]
