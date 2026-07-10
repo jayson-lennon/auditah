@@ -183,3 +183,157 @@ manual_review = false
     assert!(result.is_err(), "removed `text` field must be rejected");
     let _ = Path::new(""); // keep Path import used
 }
+
+// Well-known SPDX path integration tests (exercise the run() dispatch).
+// These construct AddLicenseCmd directly and call run() to verify the dual
+// dispatch (well-known vs --custom) end-to-end.
+
+use auditah::cli::add_license_cmd::{run, AddLicenseCmd};
+use auditah::cli::CommandStatus;
+
+// `add-license MIT` (authored grid) extracts text + authored grid; silent.
+#[test]
+fn add_license_well_known_authored_extracts_text_and_grid() {
+    // Given an empty project root.
+    let tree = temptree! {};
+    let root = tree.path().to_path_buf();
+    let cmd = AddLicenseCmd {
+        name: "MIT".to_string(),
+        custom: false,
+        root: root.clone(),
+    };
+
+    // When running add-license MIT.
+    let status = run(&cmd).expect("run");
+
+    // Then it succeeds, and both the text and authored grid are written.
+    assert_eq!(status, CommandStatus::Success);
+    let text = std::fs::read_to_string(root.join("LICENSES").join("MIT.txt")).expect("text file");
+    assert!(!text.is_empty(), "MIT.txt must be non-empty");
+    let grid = std::fs::read_to_string(root.join("LICENSES").join("MIT.toml")).expect("grid file");
+    // Authored MIT grid is permissive: manual_review = false.
+    assert!(
+        grid.contains("manual_review = false"),
+        "authored grid must have manual_review=false, got: {grid}"
+    );
+}
+
+// `add-license mit` (case-insensitive) resolves to canonical MIT on disk.
+#[test]
+fn add_license_well_known_case_insensitive_writes_canonical_casing() {
+    // Given an empty project root.
+    let tree = temptree! {};
+    let root = tree.path().to_path_buf();
+    let cmd = AddLicenseCmd {
+        name: "mit".to_string(),
+        custom: false,
+        root: root.clone(),
+    };
+
+    // When running add-license mit (lowercase).
+    let status = run(&cmd).expect("run");
+
+    // Then the on-disk files use canonical casing (MIT, not mit).
+    assert_eq!(status, CommandStatus::Success);
+    assert!(
+        root.join("LICENSES").join("MIT.txt").exists(),
+        "canonical MIT.txt"
+    );
+    assert!(
+        root.join("LICENSES").join("MIT.toml").exists(),
+        "canonical MIT.toml"
+    );
+}
+
+// `add-license Bzip2-1.0.6` (no authored grid) extracts text + default_fail placeholder.
+// Note: the canonical SPDX id is lowercase `bzip2-1.0.6`; resolve normalizes the
+// user's input casing to canonical on disk.
+#[test]
+fn add_license_well_known_no_grid_writes_text_and_placeholder_grid() {
+    // Given an empty project root.
+    let tree = temptree! {};
+    let root = tree.path().to_path_buf();
+    // Bzip2-1.0.6 is in the SPDX text corpus but has no authored grid.
+    let cmd = AddLicenseCmd {
+        name: "Bzip2-1.0.6".to_string(),
+        custom: false,
+        root: root.clone(),
+    };
+
+    // When running add-license Bzip2-1.0.6.
+    let status = run(&cmd).expect("run");
+
+    // Then both files are written; the grid is the default_fail() placeholder.
+    assert_eq!(status, CommandStatus::Success);
+    let grid =
+        std::fs::read_to_string(root.join("LICENSES").join("bzip2-1.0.6.toml")).expect("grid");
+    assert!(
+        grid.contains("manual_review = true"),
+        "placeholder grid must be default_fail() (manual_review=true), got: {grid}"
+    );
+}
+
+// `add-license --custom Foo` writes a LicenseRef-Foo default_fail grid.
+#[test]
+fn add_license_custom_writes_licenseref_default_fail_grid() {
+    // Given an empty project root.
+    let tree = temptree! {};
+    let root = tree.path().to_path_buf();
+    let cmd = AddLicenseCmd {
+        name: "Foo".to_string(),
+        custom: true,
+        root: root.clone(),
+    };
+
+    // When running add-license --custom Foo.
+    let status = run(&cmd).expect("run");
+
+    // Then it writes LicenseRef-Foo.toml with default_fail() shape; no .txt.
+    assert_eq!(status, CommandStatus::Success);
+    let grid =
+        std::fs::read_to_string(root.join("LICENSES").join("LicenseRef-Foo.toml")).expect("grid");
+    assert!(grid.contains("LicenseRef-Foo"));
+    assert!(grid.contains("manual_review = true"));
+    assert!(
+        !root.join("LICENSES").join("LicenseRef-Foo.txt").exists(),
+        "custom path must not write a .txt"
+    );
+}
+
+// `add-license --custom MIT` errors because MIT is a known SPDX id.
+#[test]
+fn add_license_custom_on_known_spdx_id_errors() {
+    // Given an empty project root.
+    let tree = temptree! {};
+    let root = tree.path().to_path_buf();
+    let cmd = AddLicenseCmd {
+        name: "MIT".to_string(),
+        custom: true,
+        root,
+    };
+
+    // When running add-license --custom MIT.
+    let result = run(&cmd);
+
+    // Then it errors (known id must use the non-custom path).
+    assert!(result.is_err(), "--custom MIT must error");
+}
+
+// `add-license NotReal` (no flag, no match) errors.
+#[test]
+fn add_license_unknown_spdx_id_without_custom_errors() {
+    // Given an empty project root.
+    let tree = temptree! {};
+    let root = tree.path().to_path_buf();
+    let cmd = AddLicenseCmd {
+        name: "NotReal".to_string(),
+        custom: false,
+        root,
+    };
+
+    // When running add-license NotReal.
+    let result = run(&cmd);
+
+    // Then it errors (unknown SPDX id).
+    assert!(result.is_err(), "unknown SPDX id must error");
+}
