@@ -158,10 +158,15 @@ impl FsBackend for RealFs {
     }
 
     fn walk(&self, root: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
-        // Individual entry read errors are skipped; a walk over readable
-        // entries is infallible from here.
-        Ok(walkdir::WalkDir::new(root)
-            .into_iter()
+        // Propagate root-level walk failures (missing/unreadable root); skip
+        // individual entry errors so one unreadable file doesn't abort the walk.
+        let mut it = walkdir::WalkDir::new(root).into_iter().peekable();
+        // If the very first entry is an error, the root itself is inaccessible.
+        if let Some(Err(_)) = it.peek() {
+            it.next(); // consume the error
+            return Err(Report::new(FsError)).attach(root.display().to_string());
+        }
+        Ok(it
             .filter_map(std::result::Result::ok)
             .filter(|e| e.file_type().is_file())
             .map(walkdir::DirEntry::into_path)
@@ -174,5 +179,51 @@ impl FsBackend for RealFs {
 
     fn name(&self) -> &'static str {
         "RealFs"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::FakeFs;
+
+    // --- walk root-error propagation ---
+
+    #[test]
+    fn walk_returns_err_when_root_does_not_exist() {
+        // Given a real filesystem.
+        let fs = RealFs::new();
+
+        // When walking a nonexistent root.
+        let result = fs.walk(std::path::Path::new("/nonexistent-auditah-root-xyz"));
+
+        // Then the walk returns an error.
+        assert!(result.is_err());
+    }
+
+    // --- walk entry-error skipping (FakeFs models the same contract) ---
+
+    #[test]
+    fn walk_collects_only_files_excluding_directories() {
+        // Given a fake filesystem with nested directories and files.
+        let fs = FakeFs::with_files([
+            ("root/a.glb", "bytes"),
+            ("root/sub/b.glb", "bytes"),
+        ]);
+
+        // When walking root recursively.
+        let mut got = fs
+            .walk(std::path::Path::new("root"))
+            .expect("walk readable root");
+
+        // Then only the files are returned (directories excluded).
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                std::path::PathBuf::from("root/a.glb"),
+                std::path::PathBuf::from("root/sub/b.glb"),
+            ]
+        );
     }
 }
