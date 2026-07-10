@@ -5,6 +5,7 @@
 
 pub mod audit;
 pub mod config;
+pub mod credits;
 pub mod discovery;
 pub mod model;
 pub mod registry;
