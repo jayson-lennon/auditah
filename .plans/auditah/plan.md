@@ -179,9 +179,18 @@ pub fn effective_terms(
 }
 ```
 
-> **Gotcha — override semantics (v1):** overrides replace the terms block
+> **Gotcha — override semantics (v1):** ~~overrides replace the terms block
 > wholesale. Partial override (field-by-field merge) is deferred; if a
 > per-asset `[overrides]` block is present, every `requires_*`/`allows_*`
+> field must be specified.~~
+>
+> **DIVERGENCE (task tg8u):** Implemented as **partial/merge overrides** via a
+> dedicated `Overrides` struct of `Option<bool>` fields. Only set fields replace
+> the base; unset fields inherit. Rationale: wholesale replacement would force
+> redeclaring all 7 fields to flip one (unusable), and test case 11 ("asset
+> `[overrides]` flips `allows_commercial_use`") sets only one field. Matches the
+> spec algorithm description ("then apply asset overrides"). `effective_terms`
+> signature changed to `(base: &LicenseTerms, overrides: &Overrides) -> LicenseTerms`.
 > field must be specified. Document this in `add`/`init-pack` help and the
 > README. A future phase may introduce a merge strategy.
 

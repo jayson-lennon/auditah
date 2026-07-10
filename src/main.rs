@@ -4,8 +4,9 @@
 //! See `.plans/auditah/plan.md` for the full specification.
 
 mod cli;
+mod model;
+mod registry;
 mod services;
-
 use clap::{Parser, Subcommand};
 
 use cli::{add_cmd::AddCmd, audit_cmd::AuditCmd, credits_cmd::CreditsCmd, init_pack_cmd::InitPackCmd};
