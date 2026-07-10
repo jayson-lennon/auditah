@@ -2,14 +2,16 @@
 
 use std::path::PathBuf;
 
-use auditah::model::terms::Overrides;
-use auditah::AppError;
+use crate::model::terms::Overrides;
+use crate::AppError;
 use clap::Args;
 
-use auditah::add::write_manifest;
-use auditah::model::attribution::AttributionRecord;
-use auditah::services::Services;
+use crate::add::write_manifest;
+use crate::model::attribution::AttributionRecord;
+use crate::services::Services;
 use error_stack::{Report, ResultExt};
+
+use super::CommandStatus;
 
 /// Write a `manifest.toml` covering a directory + its subdirs.
 #[derive(Debug, Args)]
@@ -38,8 +40,12 @@ pub struct InitPackCmd {
     pub source: Option<String>,
 }
 
-/// Run the init-pack command. Returns the process exit code.
-pub fn run(cmd: &InitPackCmd) -> Result<(), Report<AppError>> {
+/// Run the init-pack command.
+///
+/// # Errors
+///
+/// Returns an error if services fail or the manifest write fails.
+pub fn run(cmd: &InitPackCmd) -> Result<CommandStatus, Report<AppError>> {
     let title = cmd
         .title
         .clone()
@@ -68,5 +74,5 @@ pub fn run(cmd: &InitPackCmd) -> Result<(), Report<AppError>> {
     let services = Services::real().change_context(AppError)?;
     write_manifest(&services, &cmd.dir, &record).change_context(AppError)?;
     println!("init-pack: wrote {}/manifest.toml", cmd.dir.display());
-    Ok(())
+    Ok(CommandStatus::Success)
 }

@@ -3,15 +3,17 @@
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use auditah::model::terms::Overrides;
-use auditah::AppError;
+use crate::model::terms::Overrides;
+use crate::AppError;
 use clap::Args;
 
-use auditah::add::write_sidecar;
-use auditah::model::attribution::AttributionRecord;
-use auditah::services::Services;
+use crate::add::write_sidecar;
+use crate::model::attribution::AttributionRecord;
+use crate::services::Services;
 use error_stack::{Report, ResultExt};
 use wherror::Error;
+
+use super::CommandStatus;
 
 /// Scaffold an `<asset>.attr.toml` sidecar for a single asset.
 #[derive(Debug, Args)]
@@ -37,13 +39,17 @@ pub struct AddCmd {
     #[arg(long)]
     pub modified: bool,
 }
-/// Run the add command. Returns the process exit code.
-pub fn run(cmd: &AddCmd) -> Result<(), Report<AppError>> {
+/// Run the add command.
+///
+/// # Errors
+///
+/// Returns an error if field prompting, services, or the sidecar write fail.
+pub fn run(cmd: &AddCmd) -> Result<CommandStatus, Report<AppError>> {
     let record = build_record(cmd).change_context(AppError)?;
     let services = Services::real().change_context(AppError)?;
     write_sidecar(&services, &cmd.file, &record).change_context(AppError)?;
     println!("add: wrote {}.attr.toml", cmd.file.display());
-    Ok(())
+    Ok(CommandStatus::Success)
 }
 
 /// Prompt interactively for any missing field. Flags provided on the CLI skip

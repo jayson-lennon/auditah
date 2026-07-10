@@ -4,9 +4,11 @@ use std::path::PathBuf;
 
 use clap::Args;
 
-use auditah::services::Services;
-use auditah::{init_licenses::init_licenses, AppError};
+use crate::services::Services;
+use crate::{init_licenses::init_licenses, AppError};
 use error_stack::{Report, ResultExt};
+
+use super::CommandStatus;
 
 /// Write `LICENSES/<id>.txt` for every license in the registry.
 ///
@@ -20,8 +22,12 @@ pub struct InitLicensesCmd {
     pub root: PathBuf,
 }
 
-/// Run the init-licenses command. Returns the process exit code.
-pub fn run(cmd: &InitLicensesCmd) -> Result<(), Report<AppError>> {
+/// Run the init-licenses command.
+///
+/// # Errors
+///
+/// Returns an error if services fail or a divergent license file is found.
+pub fn run(cmd: &InitLicensesCmd) -> Result<CommandStatus, Report<AppError>> {
     let services = Services::real().change_context(AppError)?;
     let outcome = init_licenses(&services, &cmd.root).change_context(AppError)?;
     println!(
@@ -30,5 +36,5 @@ pub fn run(cmd: &InitLicensesCmd) -> Result<(), Report<AppError>> {
         cmd.root.display(),
         outcome.skipped,
     );
-    Ok(())
+    Ok(CommandStatus::Success)
 }
