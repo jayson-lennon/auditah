@@ -284,6 +284,33 @@ fn audit_cmd_violations_returns_ok_compliance_failure() {
 }
 
 #[test]
+fn add_cmd_run_returns_err_on_write_failure() {
+    // Given an add command whose target path is under an existing file (unwritable).
+    use auditah::cli::add_cmd::{run as add_run, AddCmd};
+    let tree = temptree! {
+        "blocker": "i am a file, not a dir"
+    };
+    let root = tree.path();
+    let target = root.join("blocker").join("x.glb");
+    let cmd = AddCmd {
+        file: target,
+        title: Some("X".to_string()),
+        author: Some("A".to_string()),
+        year: Some(2020),
+        license: Some("CC0-1.0".to_string()),
+        source: Some("https://example.com".to_string()),
+        modified: false,
+    };
+
+    // When running the add command.
+    let result = add_run(&cmd);
+
+    // Then it returns Err (write failure, exit 2).
+    assert!(result.is_err(), "add write failure must return Err");
+    assert_eq!(command_to_exit_code(&result), 2);
+}
+
+#[test]
 fn audit_cmd_missing_root_returns_err_exit_two() {
     // Given a root path that does not exist.
     let cmd = AuditCmd { root: std::path::PathBuf::from("/nonexistent/auditah/path/xyz") };
