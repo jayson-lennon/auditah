@@ -1,5 +1,6 @@
 //! Integration tests: `add` and `init-pack` produce files that round-trip
 //! through the audit pipeline cleanly.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auditah::add::{render_record, write_manifest, write_sidecar};
 use auditah::audit::{run_audit, AuditCtx};

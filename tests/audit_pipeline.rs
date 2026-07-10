@@ -1,6 +1,7 @@
 //! Integration tests: the `audit` pipeline (`run_audit`) end-to-end against a
 //! real temp filesystem. One BDD test per behavior, mapped to the plan's test
 //! cases table.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::sync::Arc;
 

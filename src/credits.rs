@@ -51,7 +51,7 @@ pub struct CreditsCtx<'a> {
 pub(crate) fn collect_credits(
     ctx: &CreditsCtx,
 ) -> Result<BTreeMap<String, Vec<CreditEntry>>, Report<CreditsError>> {
-    let excludes = build_excludes(ctx);
+    let excludes = build_excludes(ctx)?;
     let assets = enumerate(&ctx.services.fs, ctx.root, &excludes)
         .change_context(CreditsError)
         .attach("failed to enumerate assets for credits")?;
@@ -77,9 +77,19 @@ pub(crate) fn collect_credits(
 }
 
 /// Build the exclude matcher from default + user globs.
-fn build_excludes(ctx: &CreditsCtx) -> ExcludeMatcher {
+///
+/// Defense in depth: [`Config::load`] validates globs eagerly, but a
+/// `Config` constructed directly (e.g. in tests) bypasses that, so this stays
+/// fallible and propagates the error rather than panicking.
+///
+/// # Errors
+///
+/// Returns `CreditsError` if any exclude glob fails to compile.
+fn build_excludes(ctx: &CreditsCtx) -> Result<ExcludeMatcher, Report<CreditsError>> {
     let patterns = crate::discovery::all_excludes(&ctx.config.exclude);
-    ExcludeMatcher::new(&patterns).expect("exclude patterns must compile")
+    ExcludeMatcher::new(&patterns)
+        .change_context(CreditsError)
+        .attach("invalid exclude glob in auditah.toml")
 }
 
 /// Decide whether an asset needs a credits entry, and build it if so.

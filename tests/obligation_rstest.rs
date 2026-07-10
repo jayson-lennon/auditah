@@ -3,6 +3,7 @@
 //!
 //! All cases share the same property: "a violated obligation surfaces as its
 //! exact `FindingCode`. Same assertion logic, different (setup, expected code).
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auditah::audit::report::FindingCode;
 use auditah::audit::{run_audit, AuditCtx};

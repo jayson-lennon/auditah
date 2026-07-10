@@ -126,6 +126,7 @@ pub fn effective_terms(base: &LicenseTerms, overrides: &Overrides) -> LicenseTer
     }
 }
 
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use super::*;

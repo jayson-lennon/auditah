@@ -2,6 +2,7 @@
 //!
 //! Covers the new obligation that every referenced license id must have a
 //! `LICENSES/<id>.txt` file on disk, and that `init-licenses` generates them.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auditah::audit::report::{FindingCode, Severity};
 use auditah::audit::{run_audit, AuditCtx};

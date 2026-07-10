@@ -4,7 +4,7 @@
 //! `#![allow(dead_code)]` is intentional: each integration test crate compiles
 //! this module independently, so helpers used only by *other* test files
 //! would otherwise appear dead.
-
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 #![allow(dead_code)]
 
 use std::sync::Arc;

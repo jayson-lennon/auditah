@@ -6,6 +6,8 @@ use wherror::Error;
 
 use crate::services::FsService;
 
+use crate::discovery::enumerator::ExcludeMatcher;
+
 /// Error loading or parsing `auditah.toml`.
 #[derive(Debug, Error)]
 #[error(debug)]
@@ -37,6 +39,20 @@ pub struct Config {
 /// File name of the project config at the project root.
 pub const CONFIG_FILENAME: &str = "auditah.toml";
 
+/// Validate that the default + user exclude globs all compile.
+///
+/// Called eagerly in [`Config::load`] so an invalid glob in `auditah.toml`
+/// fails fast at config load rather than panicking later during the audit walk.
+/// The globs are re-compiled inside `build_excludes` at use time (defense in
+/// depth: a `Config` constructed directly, bypassing `load`, is still caught there).
+fn validate_excludes(exclude: &[String]) -> Result<(), Report<ConfigError>> {
+    let patterns = crate::discovery::all_excludes(exclude);
+    ExcludeMatcher::new(&patterns)
+        .change_context(ConfigError)
+        .attach("invalid exclude glob in auditah.toml")?;
+    Ok(())
+}
+
 impl Config {
     /// Load `auditah.toml` from `root`. Returns default config if the file is
     /// absent (configuration is optional).
@@ -53,13 +69,16 @@ impl Config {
             .read_to_string(&path)
             .change_context(ConfigError)
             .attach("failed to read project config")?;
-        toml::from_str(&content)
+        let cfg: Self = toml::from_str(&content)
             .change_context(ConfigError)
             .attach("failed to parse auditah.toml")
-            .attach(path.display().to_string())
+            .attach(path.display().to_string())?;
+        validate_excludes(&cfg.exclude)?;
+        Ok(cfg)
     }
 }
 
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +177,35 @@ exclude = ["vendor/**", "*.bak"]
             cfg.manual_review_acknowledged,
             vec!["LicenseRef-StudioEULA", "OFL-1.1"]
         );
+    }
+
+    #[test]
+    fn invalid_exclude_glob_fails_fast_at_config_load() {
+        // Given an auditah.toml with an invalid exclude glob.
+        let fs = fs_with(&[("/proj/auditah.toml", "exclude = [\"**/[invalid\"]\n")]);
+
+        // When loading the config.
+        let result = Config::load(&fs, Path::new("/proj"));
+
+        // Then loading errors eagerly (glob validated at config load).
+        assert!(
+            result.is_err(),
+            "invalid exclude glob must fail fast at Config::load"
+        );
+    }
+
+    #[test]
+    fn valid_exclude_globs_load_and_preserve() {
+        // Given an auditah.toml with valid exclude globs.
+        let fs = fs_with(&[(
+            "/proj/auditah.toml",
+            "exclude = [\"vendor/**\", \"*.bak\"]\n",
+        )]);
+
+        // When loading the config.
+        let cfg = Config::load(&fs, Path::new("/proj")).unwrap();
+
+        // Then the globs validate and are preserved unchanged.
+        assert_eq!(cfg.exclude, vec!["vendor/**", "*.bak"]);
     }
 }

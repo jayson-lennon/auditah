@@ -38,3 +38,5 @@ test-helper = ["dep:parking_lot"]
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
+unwrap_used = { level = "warn", priority = -1 }
+expect_used = { level = "warn", priority = -1 }
