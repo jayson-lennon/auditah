@@ -252,6 +252,26 @@ mod tests {
         let custom = reg.get("LicenseRef-StudioEULA").unwrap();
         assert_eq!(custom.terms.derivatives, Derivatives::Disallowed);
     }
+
+    #[rstest::rstest]
+    #[case::cc0("CC0-1.0")]
+    #[case::cc_by_3("CC-BY-3.0")]
+    #[case::mit("MIT")]
+    #[case::ofl("OFL-1.1")]
+    fn embedded_license_entry_round_trips_through_toml(#[case] id: &str) {
+        // Given an actual embedded license entry loaded from the shipped TOML
+        // (the real `include_str!` content, not a synthetic helper).
+        let entry = embedded_entries().get(id).unwrap().clone();
+
+        // When serializing to TOML and parsing back.
+        let toml_str = toml::to_string(&entry).expect("serialize must succeed");
+        let parsed: LicenseRegistryEntry = toml::from_str(&toml_str).expect("parse must succeed");
+
+        // Then the parsed entry equals the original, field-for-field.
+        // This exercises the `share-alike` Derivatives variant through real
+        // serialized form (OFL is the only embedded license using it).
+        assert_eq!(parsed, entry, "embedded {id} did not round-trip");
+    }
 }
 
 use std::path::Path;
