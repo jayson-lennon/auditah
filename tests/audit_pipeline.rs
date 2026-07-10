@@ -13,6 +13,7 @@ use common::{codes_for, non_commercial_config, seed_licenses, services};
 // Test case 1: uncovered asset → FAIL UnlicensedAsset.
 #[test]
 fn uncovered_asset_fails_as_unlicensed() {
+    // Given an uncovered asset with no sidecar or manifest.
     let tree = temptree! { "sword.glb": "binary" };
     let root = tree.path();
     let svc = services();
@@ -22,7 +23,11 @@ fn uncovered_asset_fails_as_unlicensed() {
         config: &cfg,
         root,
     };
+
+    // When running the audit.
     let report = run_audit(&ctx).unwrap();
+
+    // Then the asset FAILs as UnlicensedAsset.
     assert!(report.has_failures());
     let codes = codes_for(&report, "sword.glb");
     assert!(
@@ -34,6 +39,7 @@ fn uncovered_asset_fails_as_unlicensed() {
 // Test case 2: orphan sidecar → FAIL OrphanSidecar.
 #[test]
 fn orphan_sidecar_fails() {
+    // Given a sidecar whose asset does not exist.
     let tree = temptree! {
         "ghost.glb.attr.toml": "title = \"G\"\nauthor = \"A\"\nyear = 2020\nlicense = \"CC0-1.0\"\nsource = \"https://x\"\n",
         "real.glb": "binary",
@@ -47,7 +53,11 @@ fn orphan_sidecar_fails() {
         config: &cfg,
         root,
     };
+
+    // When running the audit.
     let report = run_audit(&ctx).unwrap();
+
+    // Then the orphan sidecar FAILs as OrphanSidecar.
     let codes = codes_for(&report, "ghost");
     assert!(
         codes.contains(&FindingCode::OrphanSidecar),
@@ -58,6 +68,7 @@ fn orphan_sidecar_fails() {
 // Test case 6: unknown license id → FAIL UnknownLicense.
 #[test]
 fn unknown_license_id_fails() {
+    // Given an asset whose sidecar references an unregistered license id.
     let tree = temptree! {
         "rock.glb": "binary",
         "rock.glb.attr.toml": r#"
@@ -76,7 +87,11 @@ source = "https://example.com"
         config: &cfg,
         root,
     };
+
+    // When running the audit.
     let report = run_audit(&ctx).unwrap();
+
+    // Then the asset FAILs as UnknownLicense.
     let codes = codes_for(&report, "rock.glb");
     assert!(
         codes.contains(&FindingCode::UnknownLicense),
@@ -87,6 +102,7 @@ source = "https://example.com"
 // Test case 7: requires_attribution + missing source → FAIL IncompleteAttribution.
 #[test]
 fn incomplete_attribution_missing_source_fails() {
+    // Given a CC-BY asset whose sidecar has an empty source.
     let tree = temptree! {
         "tile.glb": "binary",
         "tile.glb.attr.toml": r#"
@@ -105,7 +121,11 @@ source = ""
         config: &cfg,
         root,
     };
+
+    // When running the audit.
     let report = run_audit(&ctx).unwrap();
+
+    // Then the asset FAILs as IncompleteAttribution.
     let codes = codes_for(&report, "tile.glb");
     assert!(
         codes.contains(&FindingCode::IncompleteAttribution),
@@ -116,6 +136,7 @@ source = ""
 // Test case 8: allows_commercial_use=false (via override) + commercial_project → FAIL.
 #[test]
 fn non_commercial_asset_fails_under_commercial_project() {
+    // Given a CC-BY asset overridden to non-commercial under a commercial project.
     let tree = temptree! {
         "fanfare.ogg": "binary",
         "fanfare.ogg.attr.toml": r#"
@@ -140,7 +161,11 @@ allows_commercial_use = false
         config: &cfg,
         root,
     };
+
+    // When running the audit.
     let report = run_audit(&ctx).unwrap();
+
+    // Then the asset FAILs as NotCommerciallyLicensed.
     let codes = codes_for(&report, "fanfare");
     assert!(
         codes.contains(&FindingCode::NotCommerciallyLicensed),
@@ -151,6 +176,7 @@ allows_commercial_use = false
 // Test case 9: allows_modifications=false (via override) + modified=true → FAIL.
 #[test]
 fn modified_under_no_derivatives_fails() {
+    // Given a modified asset overridden to no-derivatives.
     let tree = temptree! {
         "statue.glb": "binary",
         "statue.glb.attr.toml": r#"
@@ -173,7 +199,11 @@ allows_modifications = false
         config: &cfg,
         root,
     };
+
+    // When running the audit.
     let report = run_audit(&ctx).unwrap();
+
+    // Then the asset FAILs as ModifiedUnderNoDerivatives.
     let codes = codes_for(&report, "statue");
     assert!(
         codes.contains(&FindingCode::ModifiedUnderNoDerivatives),
@@ -184,6 +214,7 @@ allows_modifications = false
 // Test case 10: requires_share_alike=true (via override) → FLAG, not Fail.
 #[test]
 fn share_alike_is_flag_not_fail() {
+    // Given a CC-BY asset overridden to share-alike, with licenses seeded.
     let tree = temptree! {
         "viral.glb": "binary",
         "viral.glb.attr.toml": r#"
@@ -206,8 +237,11 @@ requires_share_alike = true
         config: &cfg,
         root,
     };
+
+    // When running the audit.
     let report = run_audit(&ctx).unwrap();
-    // No blocking failures for this asset.
+
+    // Then the asset is FLAGged (ShareAlikeReview) but does not FAIL.
     let viral_fail = report
         .findings
         .iter()
@@ -225,6 +259,7 @@ requires_share_alike = true
 // project the asset still passes; confirms effective-terms computation flows.
 #[test]
 fn override_commercial_under_non_commercial_project_passes() {
+    // Given a CC-BY asset overridden to non-commercial under a non-commercial project.
     let tree = temptree! {
         "ok.glb": "binary",
         "ok.glb.attr.toml": r#"
@@ -247,7 +282,11 @@ allows_commercial_use = false
         config: &cfg,
         root,
     };
+
+    // When running the audit.
     let report = run_audit(&ctx).unwrap();
+
+    // Then no failure is raised (non-commercial asset is fine under a non-commercial project).
     let codes = codes_for(&report, "ok.glb");
     assert!(
         !codes.contains(&FindingCode::NotCommerciallyLicensed),
@@ -259,6 +298,7 @@ allows_commercial_use = false
 // Test case 12: asset excluded via [exclude] glob is not audited.
 #[test]
 fn excluded_glob_asset_not_audited() {
+    // Given a project where vendor/** is excluded.
     let tree = temptree! {
         "vendor": {
             "skip.glb": "binary"
@@ -275,8 +315,11 @@ fn excluded_glob_asset_not_audited() {
         config: &cfg,
         root,
     };
+
+    // When running the audit.
     let report = run_audit(&ctx).unwrap();
-    // skip.glb is excluded → no findings about it, and no failures at all.
+
+    // Then the excluded asset does not appear in findings and there are no failures.
     assert!(
         report
             .findings

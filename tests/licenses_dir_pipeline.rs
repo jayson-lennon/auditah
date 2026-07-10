@@ -18,6 +18,7 @@ use std::sync::Arc;
 // A covered CC-BY asset with no LICENSES/ directory → FAIL MissingLicenseText.
 #[test]
 fn audit_fails_when_license_text_missing() {
+    // Given a CC-BY asset with no LICENSES/ directory.
     let tree = temptree! {
         "sack.glb": "binary",
         "sack.glb.attr.toml": "title = \"Sack\"\nauthor = \"A\"\nyear = 2019\nlicense = \"CC-BY-3.0\"\nsource = \"https://x\"\n",
@@ -30,7 +31,11 @@ fn audit_fails_when_license_text_missing() {
         config: &cfg,
         root,
     };
+
+    // When running the audit.
     let report = run_audit(&ctx).unwrap();
+
+    // Then the asset FAILs as MissingLicenseText.
     assert!(report.has_failures());
     let codes = codes_for(&report, "sack.glb");
     assert!(
@@ -42,6 +47,7 @@ fn audit_fails_when_license_text_missing() {
 // After init-licenses writes LICENSES/CC-BY-3.0.txt, audit passes clean.
 #[test]
 fn init_licenses_makes_audit_pass() {
+    // Given a CC-BY asset with no LICENSES/ directory.
     let tree = temptree! {
         "sack.glb": "binary",
         "sack.glb.attr.toml": "title = \"Sack\"\nauthor = \"A\"\nyear = 2019\nlicense = \"CC-BY-3.0\"\nsource = \"https://x\"\n",
@@ -50,14 +56,16 @@ fn init_licenses_makes_audit_pass() {
     let svc = services();
     let cfg = config();
 
-    // Generate license text files.
+    // When running init-licenses.
     let outcome = init_licenses(&svc, root).unwrap();
+
+    // Then at least CC-BY-3.0.txt is written.
     assert!(
         outcome.written >= 1,
         "expected at least CC-BY-3.0.txt written"
     );
 
-    // Audit should now pass clean.
+    // And the audit now passes clean.
     let ctx = AuditCtx {
         services: &svc,
         config: &cfg,
@@ -75,6 +83,7 @@ fn init_licenses_makes_audit_pass() {
 // init-licenses (sourced from the project-local .toml inline `text`).
 #[test]
 fn custom_licenseref_text_written_from_project_local_toml() {
+    // Given a CC-BY asset and a project-local custom LicenseRef with inline text.
     let tree = temptree! {
         "statue.glb": "binary",
         "statue.glb.attr.toml": "title = \"Statue\"\nauthor = \"S\"\nyear = 2020\nlicense = \"LicenseRef-Custom\"\nsource = \"https://x\"\n",
@@ -101,8 +110,10 @@ allows_modifications = true
     let svc = Services { fs, registry };
     let cfg = config();
 
-    // init-licenses should write LICENSES/LicenseRef-Custom.txt from inline text.
+    // When running init-licenses.
     let outcome = init_licenses(&svc, root).unwrap();
+
+    // Then the custom license text is written from the inline text, and audit passes.
     let custom_path = root.join("LICENSES").join("LicenseRef-Custom.txt");
     assert!(
         custom_path.exists(),
@@ -113,8 +124,6 @@ allows_modifications = true
         written.contains("CUSTOM LICENSE TEXT BODY"),
         "custom text should come from project-local toml inline text"
     );
-
-    // Audit now passes (text file present).
     let ctx = AuditCtx {
         services: &svc,
         config: &cfg,
@@ -126,13 +135,13 @@ allows_modifications = true
         "expected clean audit for custom license with text, got: {:?}",
         report.findings
     );
-
     let _ = outcome;
 }
 
 // CC0 assets (no attribution) still require LICENSES/CC0-1.0.txt.
 #[test]
 fn cc0_asset_also_requires_license_text() {
+    // Given a CC0 asset with no LICENSES/ directory.
     let tree = temptree! {
         "rock.glb": "binary",
         "rock.glb.attr.toml": "title = \"Rock\"\nauthor = \"A\"\nyear = 2020\nlicense = \"CC0-1.0\"\nsource = \"https://x\"\n",
@@ -145,17 +154,22 @@ fn cc0_asset_also_requires_license_text() {
         config: &cfg,
         root,
     };
-    // No LICENSES/ yet → FAIL.
+
+    // When running the audit before init-licenses.
     let report = run_audit(&ctx).unwrap();
+
+    // Then CC0 FAILs as MissingLicenseText (it also requires its text file).
     let codes = codes_for(&report, "rock.glb");
     assert!(
         codes.contains(&FindingCode::MissingLicenseText),
         "CC0 must also require its text file, got {codes:?}"
     );
 
-    // After init, clean.
+    // When running init-licenses then re-auditing.
     init_licenses(&svc, root).unwrap();
     let report = run_audit(&ctx).unwrap();
+
+    // Then the audit is clean.
     assert!(
         !report.has_failures(),
         "expected clean after init-licenses, got: {:?}",

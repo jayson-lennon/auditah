@@ -12,18 +12,22 @@ use common::{cfg, record, seed_licenses, services};
 // `add` writes a sidecar that audit then accepts as covered.
 #[test]
 fn add_sidecar_makes_asset_pass_audit() {
+    // Given an uncovered asset and a CC0 sidecar written by `add`.
     let tree = temptree! { "sword.glb": "binary" };
     let root = tree.path();
     seed_licenses(root);
     let svc = services();
     write_sidecar(&svc, &root.join("sword.glb"), &record("CC0-1.0")).unwrap();
 
+    // When running the audit.
     let ctx = AuditCtx {
         services: &svc,
         config: &cfg(),
         root,
     };
     let report = run_audit(&ctx).unwrap();
+
+    // Then the sidecarred asset passes (no failures).
     assert!(
         !report.has_failures(),
         "sidecarred asset must pass; got {:?}",
@@ -34,6 +38,7 @@ fn add_sidecar_makes_asset_pass_audit() {
 // `init-pack` writes a manifest that audit then accepts for every asset in the dir.
 #[test]
 fn init_pack_manifest_covers_entire_directory() {
+    // Given a pack directory with three uncovered assets and a CC0 manifest.
     let tree = temptree! {
         "pack": {
             "rock.glb": "b",
@@ -46,12 +51,15 @@ fn init_pack_manifest_covers_entire_directory() {
     let svc = services();
     write_manifest(&svc, &root.join("pack"), &record("CC0-1.0")).unwrap();
 
+    // When running the audit.
     let ctx = AuditCtx {
         services: &svc,
         config: &cfg(),
         root,
     };
     let report = run_audit(&ctx).unwrap();
+
+    // Then every asset in the dir passes (manifest covers all).
     assert!(
         !report.has_failures(),
         "manifest-covered dir must pass; got {:?}",
@@ -62,6 +70,7 @@ fn init_pack_manifest_covers_entire_directory() {
 // `init-pack` covers nested subdirectories too (manifest applies to subtree).
 #[test]
 fn init_pack_manifest_covers_subdirectories() {
+    // Given a pack directory with a nested subdirectory, covered by one manifest.
     let tree = temptree! {
         "pack": {
             "a.glb": "b",
@@ -73,12 +82,15 @@ fn init_pack_manifest_covers_subdirectories() {
     let svc = services();
     write_manifest(&svc, &root.join("pack"), &record("CC0-1.0")).unwrap();
 
+    // When running the audit.
     let ctx = AuditCtx {
         services: &svc,
         config: &cfg(),
         root,
     };
     let report = run_audit(&ctx).unwrap();
+
+    // Then the nested asset also passes (manifest applies to subtree).
     assert!(
         !report.has_failures(),
         "manifest-covered subtree must pass; got {:?}",
@@ -89,6 +101,7 @@ fn init_pack_manifest_covers_subdirectories() {
 // A sidecar written by `add` overrides a manifest written by `init-pack`.
 #[test]
 fn add_sidecar_overrides_init_pack_manifest() {
+    // Given a pack with a CC0 manifest and a per-file CC-BY sidecar on one asset.
     let tree = temptree! {
         "pack": {
             "special.glb": "b",
@@ -97,18 +110,20 @@ fn add_sidecar_overrides_init_pack_manifest() {
     let root = tree.path();
     seed_licenses(root);
     let svc = services();
-    // Manifest says CC0; sidecar says CC-BY (which requires a non-empty source).
     write_manifest(&svc, &root.join("pack"), &record("CC0-1.0")).unwrap();
     let mut special = record("CC-BY-3.0");
     special.title = "Special".to_string();
     write_sidecar(&svc, &root.join("pack").join("special.glb"), &special).unwrap();
 
+    // When running the audit.
     let ctx = AuditCtx {
         services: &svc,
         config: &cfg(),
         root,
     };
     let report = run_audit(&ctx).unwrap();
+
+    // Then the sidecar wins and the asset passes.
     assert!(
         !report.has_failures(),
         "sidecar override must win; got {:?}",
@@ -119,8 +134,13 @@ fn add_sidecar_overrides_init_pack_manifest() {
 // `render_record` output parses back to the same record (idempotent scaffold).
 #[test]
 fn render_record_round_trips_into_audit_record() {
+    // Given a CC-BY attribution record.
     let rec = record("CC-BY-3.0");
+
+    // When rendering to TOML and parsing back.
     let toml = render_record(&rec);
     let parsed: AttributionRecord = toml::from_str(&toml).expect("round-trip");
+
+    // Then the parsed record equals the original.
     assert_eq!(parsed, rec);
 }
