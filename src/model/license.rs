@@ -4,11 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::terms::LicenseTerms;
 
-/// One license in the registry. Bundled licenses (CC0, CC-BY-3.0, MIT, OFL) are
-/// embedded in the binary via `include_str!`; project-local `licenses/*.toml`
-/// files (including any `LicenseRef-*`) merge in at load and can override
-/// bundled entries by `id`.
+/// One license in the registry. All entries come from `LICENSES/*.toml`
+/// (no embedded licenses); the `id` is `LicenseRef-*` for custom licenses.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LicenseRegistryEntry {
     /// SPDX license ID (`CC-BY-3.0`, `MIT`, `CC0-1.0`) or `LicenseRef-*` for custom.
     pub id: String,
@@ -16,9 +15,6 @@ pub struct LicenseRegistryEntry {
     pub name: String,
     /// Canonical URL of the license.
     pub url: String,
-    /// Full license text. Embedded licenses carry this at compile time.
-    #[serde(default)]
-    pub text: String,
     /// Obligations and permissions of this license.
     pub terms: LicenseTerms,
     /// Free-form notes, especially for bespoke/custom licenses.
@@ -29,25 +25,12 @@ pub struct LicenseRegistryEntry {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::model::terms::Derivatives;
-
     fn cc0_entry() -> LicenseRegistryEntry {
         LicenseRegistryEntry {
             id: "CC0-1.0".to_string(),
             name: "Creative Commons Zero".to_string(),
             url: "https://creativecommons.org/publicdomain/zero/1.0/".to_string(),
-            text: "(full text elided)".to_string(),
-            terms: LicenseTerms {
-                requires_attribution: false,
-                requires_license_notice: false,
-                requires_source_disclosure: false,
-                derivatives: Derivatives::Allowed,
-                requires_modification_notice: false,
-                allows_commercial_use: true,
-                allows_redistribution: true,
-                manual_review: false,
-            },
+            terms: LicenseTerms::permissive(),
             notes: None,
         }
     }

@@ -66,6 +66,27 @@ pub struct LicenseTerms {
     pub manual_review: bool,
 }
 
+impl LicenseTerms {
+    /// Permissive baseline: the "use however you want" shape.
+    ///
+    /// Used as the default for the `add-license` template and as the starting
+    /// point for test fixtures. All permissions granted, no obligations,
+    /// derivatives allowed, no manual review.
+    #[must_use]
+    pub fn permissive() -> Self {
+        Self {
+            requires_attribution: false,
+            requires_license_notice: false,
+            requires_source_disclosure: false,
+            derivatives: Derivatives::Allowed,
+            requires_modification_notice: false,
+            allows_commercial_use: true,
+            allows_redistribution: true,
+            manual_review: false,
+        }
+    }
+}
+
 /// Per-asset term overrides. All fields optional — only set fields replace
 /// the corresponding registry term; unset fields inherit from the license.
 /// This is *merge* semantics (spec algorithm: "then apply asset overrides"),

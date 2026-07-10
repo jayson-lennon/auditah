@@ -5,8 +5,8 @@
 
 use auditah::cli::command_to_exit_code;
 use auditah::cli::{
-    add_cmd::AddCmd, audit_cmd::AuditCmd, credits_cmd::CreditsCmd,
-    init_licenses_cmd::InitLicensesCmd, init_pack_cmd::InitPackCmd, CommandStatus,
+    add_cmd::AddCmd, audit_cmd::AuditCmd, credits_cmd::CreditsCmd, init_pack_cmd::InitPackCmd,
+    CommandStatus,
 };
 use clap::{Parser, Subcommand};
 use error_stack::Report;
@@ -29,8 +29,6 @@ enum Command {
     Credits(CreditsCmd),
     /// Scaffold an attribution sidecar for a single asset.
     Add(AddCmd),
-    /// Write full license text files to LICENSES/.
-    InitLicenses(InitLicensesCmd),
     /// Write a directory manifest.toml covering a folder.
     InitPack(InitPackCmd),
 }
@@ -41,7 +39,6 @@ fn dispatch(command: Command) -> Result<CommandStatus, Report<AppError>> {
         Command::Audit(cmd) => auditah::cli::audit_cmd::run(&cmd),
         Command::Credits(cmd) => auditah::cli::credits_cmd::run(&cmd),
         Command::Add(cmd) => auditah::cli::add_cmd::run(&cmd),
-        Command::InitLicenses(cmd) => auditah::cli::init_licenses_cmd::run(&cmd),
         Command::InitPack(cmd) => auditah::cli::init_pack_cmd::run(&cmd),
     }
 }

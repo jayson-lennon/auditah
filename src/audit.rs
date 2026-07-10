@@ -132,7 +132,7 @@ fn check_license_text(asset: &Path, license_id: &str, ctx: &AuditCtx, report: &m
             FindingCode::MissingLicenseText,
             asset.to_path_buf(),
             format!(
-                "license {license_id:?} has no LICENSES/{license_id}.txt; run `auditah init-licenses`"
+                "license {license_id:?} has no LICENSES/{license_id}.txt; create it with the full license text"
             ),
         ));
     }

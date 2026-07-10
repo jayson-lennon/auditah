@@ -1,317 +1,63 @@
-//! Embedded license registry definitions. Bundled into the binary at compile
-//! time via `include_str!`. Project-local `licenses/*.toml` files merge on top
-//! of these (override by `id`, or add new `LicenseRef-*` ids).
+//! License registry: project-local `LICENSES/*.toml` definitions loaded at
+//! runtime. No embedded licenses — every license is `LicenseRef-*` authored
+//! via `add-license` (or hand-placed in `LICENSES/`).
 //!
-//! Each license is two files: `<id>.toml` (metadata + terms) and `<id>.txt`
-//! (full legal text). The loader composes the two into a `LicenseRegistryEntry`.
+//! Each license is two files in a single `LICENSES/` directory:
+//! `<id>.toml` (metadata + terms grid) and `<id>.txt` (full legal text). The
+//! `.toml` is parsed here; the `.txt` presence is checked at audit time.
+//!
+//! Tests construct a registry in-memory via [`LicenseRegistry::builder`], or via
+//! [`LicenseRegistryBuilder::commit`] for tests that need files on disk.
 
-use std::{collections::HashMap, path::PathBuf};
-
-use crate::model::license::LicenseRegistryEntry;
-
-/// Metadata + full text for one embedded license.
-struct EmbeddedDef {
-    id: &'static str,
-    toml: &'static str,
-    text: &'static str,
-}
-
-/// All bundled license definitions. Add a new bundled license by appending here
-/// and dropping a `<id>.toml` + `<id>.txt` pair in this directory.
-const EMBEDDED: &[EmbeddedDef] = &[
-    EmbeddedDef {
-        id: "CC0-1.0",
-        toml: include_str!("embedded_licenses/CC0-1.0.toml"),
-        text: include_str!("embedded_licenses/CC0-1.0.txt"),
-    },
-    EmbeddedDef {
-        id: "CC-BY-3.0",
-        toml: include_str!("embedded_licenses/CC-BY-3.0.toml"),
-        text: include_str!("embedded_licenses/CC-BY-3.0.txt"),
-    },
-    EmbeddedDef {
-        id: "MIT",
-        toml: include_str!("embedded_licenses/MIT.toml"),
-        text: include_str!("embedded_licenses/MIT.txt"),
-    },
-    EmbeddedDef {
-        id: "OFL-1.1",
-        toml: include_str!("embedded_licenses/OFL-1.1.toml"),
-        text: include_str!("embedded_licenses/OFL-1.1.txt"),
-    },
-];
-
-/// Parse all embedded license definitions into a map keyed by `id`.
-///
-/// Panics at startup if any embedded TOML fails to parse or has a mismatched
-/// `id` — these are compile-time-authored data, so malformed = bug.
-#[must_use]
-#[allow(clippy::missing_panics_doc)]
-pub fn embedded_entries() -> HashMap<String, LicenseRegistryEntry> {
-    let mut map = HashMap::new();
-    for def in EMBEDDED {
-        let mut entry: LicenseRegistryEntry = toml::from_str(def.toml)
-            .unwrap_or_else(|e| panic!("embedded {id} TOML malformed: {e}", id = def.id));
-        assert_eq!(
-            entry.id,
-            def.id,
-            "embedded license id mismatch: TOML says {toml_id}, file is {file_id}",
-            toml_id = entry.id,
-            file_id = def.id
-        );
-        // Fill the full legal text from the companion .txt (TOML omits it).
-        if entry.text.is_empty() {
-            entry.text = def.text.to_string();
-        }
-        map.insert(entry.id.clone(), entry);
-    }
-    map
-}
-
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use super::*;
-    use crate::model::terms::{effective_terms, Derivatives, Overrides};
-
-    #[test]
-    fn embedded_registry_contains_all_four_expected_ids() {
-        // Given the embedded license registry.
-        let map = embedded_entries();
-
-        // When checking the registry size and ids.
-        // Then all four ids are present.
-        assert_eq!(map.len(), 4, "expected CC0-1.0, CC-BY-3.0, MIT, OFL-1.1");
-        for id in ["CC0-1.0", "CC-BY-3.0", "MIT", "OFL-1.1"] {
-            assert!(map.contains_key(id), "missing embedded license {id}");
-        }
-    }
-
-    #[test]
-    fn embedded_mit_text_is_nonempty_and_canonical() {
-        // Given the embedded MIT license entry.
-        let map = embedded_entries();
-        let mit = &map["MIT"];
-
-        // When inspecting its text.
-        // Then the text is populated and contains the canonical permission phrase.
-        assert!(!mit.text.is_empty(), "MIT text should be filled from .txt");
-        assert!(mit.text.contains("Permission is hereby granted"));
-    }
-
-    // --- Registry lookup + unknown-id rejection (rstest-parameterized) ---
-
-    /// Parameterized over every embedded license id: each must be lookable-up.
-    #[rstest::rstest]
-    #[case::cc0("CC0-1.0")]
-    #[case::cc_by_3("CC-BY-3.0")]
-    #[case::mit("MIT")]
-    #[case::ofl("OFL-1.1")]
-    fn registry_lookup_returns_entry_for_known_id(#[case] id: &str) {
-        // Given the embedded registry.
-        let reg = LicenseRegistry::embedded_only();
-
-        // When looking up a known id.
-        let entry = reg
-            .get(id)
-            .unwrap_or_else(|| panic!("{id} should be in registry"));
-
-        // Then the entry's id matches.
-        assert_eq!(entry.id, id);
-    }
-
-    #[rstest::rstest]
-    #[case::typo("CC0")]
-    #[case::missing("GPL-3.0")]
-    #[case::empty("")]
-    #[case::ref_not_embedded("LicenseRef-Custom")]
-    fn registry_lookup_returns_none_for_unknown_id(#[case] id: &str) {
-        // Given the embedded registry.
-        let reg = LicenseRegistry::embedded_only();
-
-        // When looking up an unknown id.
-        // Then lookup returns None.
-        assert!(reg.get(id).is_none(), "{id:?} should NOT resolve");
-    }
-
-    // --- split: per-license attribution requirement ---
-
-    #[test]
-    fn cc_by_requires_attribution() {
-        // Given the embedded registry.
-        let reg = LicenseRegistry::embedded_only();
-
-        // When inspecting CC-BY-3.0 terms.
-        // Then attribution is required.
-        assert!(reg.get("CC-BY-3.0").unwrap().terms.requires_attribution);
-    }
-
-    #[test]
-    fn cc0_does_not_require_attribution() {
-        // Given the embedded registry.
-        let reg = LicenseRegistry::embedded_only();
-
-        // When inspecting CC0-1.0 terms.
-        // Then attribution is not required.
-        assert!(!reg.get("CC0-1.0").unwrap().terms.requires_attribution);
-    }
-
-    // --- effective_terms override application (rstest-parameterized) ---
-
-    #[rstest::rstest]
-    #[case::no_override("CC-BY-3.0", Overrides::default(), true, true)]
-    #[case::flip_commercial("CC-BY-3.0", Overrides { allows_commercial_use: Some(false), ..Default::default() }, true, false)]
-    #[case::flip_attribution("CC-BY-3.0", Overrides { requires_attribution: Some(false), ..Default::default() }, false, true)]
-    fn effective_terms_applies_overrides(
-        #[case] license_id: &str,
-        #[case] overrides: Overrides,
-        #[case] expect_attr: bool,
-        #[case] expect_comm: bool,
-    ) {
-        // Given the registry entry for `license_id`.
-        let reg = LicenseRegistry::embedded_only();
-        let base = &reg.get(license_id).unwrap().terms;
-
-        // When applying the overrides.
-        let eff = effective_terms(base, &overrides);
-
-        // Then the effective terms reflect the override (or lack thereof).
-        assert_eq!(eff.requires_attribution, expect_attr);
-        assert_eq!(eff.allows_commercial_use, expect_comm);
-    }
-
-    // --- Project-local merge via FakeFs (no real filesystem) ---
-
-    #[test]
-    fn project_local_license_overrides_embedded_by_id() {
-        // Given a project-local MIT.toml that overrides name + commercial use.
-        use crate::services::fs::FsService;
-        use crate::test_support::FakeFs;
-        use std::path::Path;
-        let toml = r#"
-            id = "MIT"
-            name = "MIT (overridden)"
-            url = "https://example.com/mit"
-            text = "override"
-            [terms]
-            requires_attribution = false
-            requires_license_notice = true
-            requires_source_disclosure = false
-            derivatives = "allowed"
-            requires_modification_notice = false
-            allows_commercial_use = false
-            allows_redistribution = true
-            manual_review = false
-        "#;
-        let fs = FsService::new(Arc::new(FakeFs::with_files([(
-            "/proj/licenses/MIT.toml",
-            toml,
-        )])));
-
-        // When loading the merged registry.
-        let reg = LicenseRegistry::load(&fs, Path::new("/proj")).unwrap();
-
-        // Then the project-local entry overrides the embedded one by id.
-        let mit = reg.get("MIT").unwrap();
-        assert_eq!(mit.name, "MIT (overridden)");
-        assert!(!mit.terms.allows_commercial_use);
-    }
-
-    #[test]
-    fn project_local_licenseref_added_to_registry() {
-        // Given a project-local LicenseRef entry not in the embedded set.
-        use crate::services::fs::FsService;
-        use crate::test_support::FakeFs;
-        use std::path::Path;
-        let toml = r#"
-            id = "LicenseRef-StudioEULA"
-            name = "Studio Custom EULA"
-            url = "https://example.com/eula"
-            text = "custom"
-            [terms]
-            requires_attribution = true
-            requires_license_notice = true
-            requires_source_disclosure = false
-            derivatives = "disallowed"
-            requires_modification_notice = false
-            allows_commercial_use = true
-            allows_redistribution = false
-            manual_review = false
-        "#;
-        let fs = FsService::new(Arc::new(FakeFs::with_files([(
-            "/proj/licenses/LicenseRef-StudioEULA.toml",
-            toml,
-        )])));
-
-        // When loading the merged registry.
-        let reg = LicenseRegistry::load(&fs, Path::new("/proj")).unwrap();
-
-        // Then the LicenseRef is added (4 embedded + 1) and its terms are honored.
-        assert_eq!(reg.len(), 5, "4 embedded + 1 LicenseRef");
-        let custom = reg.get("LicenseRef-StudioEULA").unwrap();
-        assert_eq!(custom.terms.derivatives, Derivatives::Disallowed);
-    }
-
-    #[rstest::rstest]
-    #[case::cc0("CC0-1.0")]
-    #[case::cc_by_3("CC-BY-3.0")]
-    #[case::mit("MIT")]
-    #[case::ofl("OFL-1.1")]
-    fn embedded_license_entry_round_trips_through_toml(#[case] id: &str) {
-        // Given an actual embedded license entry loaded from the shipped TOML
-        // (the real `include_str!` content, not a synthetic helper).
-        let entry = embedded_entries().get(id).unwrap().clone();
-
-        // When serializing to TOML and parsing back.
-        let toml_str = toml::to_string(&entry).expect("serialize must succeed");
-        let parsed: LicenseRegistryEntry = toml::from_str(&toml_str).expect("parse must succeed");
-
-        // Then the parsed entry equals the original, field-for-field.
-        // This exercises the `share-alike` Derivatives variant through real
-        // serialized form (OFL is the only embedded license using it).
-        assert_eq!(parsed, entry, "embedded {id} did not round-trip");
-    }
-}
-
-use std::path::Path;
+use std::{collections::HashMap, path::Path, path::PathBuf};
 
 use error_stack::{Report, ResultExt};
 use wherror::Error;
 
+use crate::model::license::LicenseRegistryEntry;
+use crate::model::terms::LicenseTerms;
 use crate::services::FsService;
+
 
 /// Error loading the license registry.
 #[derive(Debug, Error)]
 #[error(debug)]
 pub struct RegistryError;
 
-/// The merged license registry: embedded licenses + project-local overrides/additions.
+/// The license registry: `LICENSES/*.toml` definitions loaded at runtime.
 #[derive(Debug, Clone)]
 pub struct LicenseRegistry {
     entries: HashMap<String, LicenseRegistryEntry>,
 }
 
 impl LicenseRegistry {
-    /// Load the registry: embedded licenses first, then project-local `licenses/*.toml`
-    /// merged by `id` (project wins).
+    /// Load the registry from `LICENSES/*.toml` in `project_root`.
+    ///
+    /// Starts from an empty map — there are no embedded licenses. A missing
+    /// `LICENSES/` directory yields an empty registry (no error).
     ///
     /// # Errors
-    /// Returns `RegistryError` if a project-local TOML fails to parse or read.
+    /// Returns `RegistryError` if a `LICENSES/*.toml` fails to parse or read.
     pub fn load(fs: &FsService, project_root: &Path) -> Result<Self, Report<RegistryError>> {
-        let mut entries = embedded_entries();
+        let mut entries = HashMap::new();
         merge_project_local(fs, project_root, &mut entries)?;
         Ok(Self { entries })
     }
 
-    /// Build a registry from embedded licenses only (no project-local files).
-    /// Used in tests that don't need a filesystem.
+    /// An empty registry. Used when no `LICENSES/` directory exists and by tests
+    /// that want the trivial empty case.
     #[must_use]
-    pub fn embedded_only() -> Self {
+    pub fn empty() -> Self {
         Self {
-            entries: embedded_entries(),
+            entries: HashMap::new(),
         }
+    }
+
+    /// Begin a fluent builder. Add licenses via `.license(spec)`, then `.build()`
+    /// (in-memory) or `.commit(root, fs)` (writes `LICENSES/*.toml` + loads).
+    #[must_use]
+    pub fn builder() -> LicenseRegistryBuilder {
+        LicenseRegistryBuilder::default()
     }
 
     /// Look up a license by id. `None` if unknown.
@@ -325,7 +71,7 @@ impl LicenseRegistry {
         self.entries.values()
     }
 
-    /// Number of registered licenses (embedded + project-local).
+    /// Number of registered licenses.
     #[must_use]
     pub fn len(&self) -> usize {
         self.entries.len()
@@ -338,18 +84,18 @@ impl LicenseRegistry {
     }
 }
 
-/// Read each `<project_root>/licenses/*.toml`, parse it, and merge into `entries`
-/// by `id`. Project-local entries override embedded ones with the same id.
+/// Read each `<project_root>/LICENSES/*.toml`, parse it, and merge into `entries`
+/// by `id`.
 fn merge_project_local(
     fs: &FsService,
     project_root: &Path,
     entries: &mut HashMap<String, LicenseRegistryEntry>,
 ) -> Result<(), Report<RegistryError>> {
-    let local_dir = project_root.join("licenses");
-    if !fs.exists(&local_dir) {
+    let licenses_dir = project_root.join("LICENSES");
+    if !fs.exists(&licenses_dir) {
         return Ok(());
     }
-    let toml_paths = list_local_tomls(fs, &local_dir)?;
+    let toml_paths = list_local_tomls(fs, &licenses_dir)?;
     for path in toml_paths {
         let entry = read_and_parse_local(fs, &path)?;
         entries.insert(entry.id.clone(), entry);
@@ -357,7 +103,7 @@ fn merge_project_local(
     Ok(())
 }
 
-/// List `*.toml` files in the local `licenses/` dir.
+/// List `*.toml` files in the `LICENSES/` dir.
 fn list_local_tomls(fs: &FsService, dir: &Path) -> Result<Vec<PathBuf>, Report<RegistryError>> {
     Ok(fs
         .list_dir(dir)
@@ -382,13 +128,104 @@ fn read_and_parse_local(
         .change_context(RegistryError)
         .attach("failed to parse project-local license TOML".to_string())
         .attach(path.display().to_string())?;
-    // Custom LicenseRef-* entries must carry their own full license text;
-    // there is no embedded fallback for them.
-    if entry.id.starts_with("LicenseRef-") && entry.text.trim().is_empty() {
-        return Err(Report::from(RegistryError)
-            .attach("custom LicenseRef-* license has empty `text`".to_string())
-            .attach(entry.id.clone())
-            .attach(path.display().to_string()));
-    }
     Ok(entry)
+}
+
+/// Fluent builder for a [`LicenseRegistry`]. Used by tests to construct a
+/// registry in-memory (`.build()`) or commit it to disk (`.commit(root, fs)`).
+#[derive(Debug, Clone, Default)]
+pub struct LicenseRegistryBuilder {
+    specs: Vec<LicenseSpec>,
+}
+
+impl LicenseRegistryBuilder {
+    /// Add a license spec. Chainable.
+    #[must_use]
+    pub fn license(mut self, spec: LicenseSpec) -> Self {
+        self.specs.push(spec);
+        self
+    }
+
+    /// Build the registry in-memory. No disk touched. The common case.
+    #[must_use]
+    pub fn build(self) -> LicenseRegistry {
+        let mut entries = HashMap::new();
+        for spec in self.specs {
+            entries.insert(spec.id.clone(), spec.into_entry());
+        }
+        LicenseRegistry { entries }
+    }
+
+    /// Write `LICENSES/<id>.toml` for each spec, then load the merged registry.
+    /// For tests that need files on disk (add-license output, load, audit text-check).
+    ///
+    /// # Errors
+    /// Returns `RegistryError` if a TOML serialize or write fails.
+    pub fn commit(
+        self,
+        root: &Path,
+        fs: &FsService,
+    ) -> Result<LicenseRegistry, Report<RegistryError>> {
+        let dir = root.join("LICENSES");
+        for spec in &self.specs {
+            let path = dir.join(format!("{}.toml", spec.id));
+            let toml = toml::to_string(&spec.entry())
+                .change_context(RegistryError)
+                .attach("failed to serialize license template".to_string())
+                .attach(spec.id.clone())?;
+            fs.write(&path, &toml)
+                .change_context(RegistryError)
+                .attach("failed to write LICENSES/<id>.toml".to_string())
+                .attach(path.display().to_string())?;
+        }
+        LicenseRegistry::load(fs, root)
+    }
+}
+
+/// Specification for one license entry in a builder. Defaults to permissive terms.
+#[derive(Debug, Clone)]
+pub struct LicenseSpec {
+    id: String,
+    entry: LicenseRegistryEntry,
+}
+
+impl LicenseSpec {
+    /// Create a spec for `id` with permissive default terms.
+    #[must_use]
+    pub fn new(id: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            entry: LicenseRegistryEntry {
+                id: id.to_string(),
+                name: id.to_string(),
+                url: String::new(),
+                terms: LicenseTerms::permissive(),
+                notes: None,
+            },
+        }
+    }
+
+    /// Replace the terms.
+    #[must_use]
+    pub fn terms(mut self, terms: LicenseTerms) -> Self {
+        self.entry.terms = terms;
+        self
+    }
+
+    /// Set the human-readable name.
+    #[must_use]
+    pub fn name(mut self, name: &str) -> Self {
+        self.entry.name = name.to_string();
+        self
+    }
+
+    /// Consume into the entry. (Builder's `.build()` consumes the spec.)
+    fn into_entry(self) -> LicenseRegistryEntry {
+        self.entry
+    }
+
+    /// Borrow the entry. (Builder's `.commit()` serializes without consuming.)
+    fn entry(&self) -> &LicenseRegistryEntry {
+        &self.entry
+    }
 }
