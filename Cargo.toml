@@ -29,3 +29,4 @@ derive_more = { version = "1", features = ["debug"] }
 tempfile = "3"
 temptree = "0.2"
 rstest = "0.22"
+parking_lot = "0.12.5"

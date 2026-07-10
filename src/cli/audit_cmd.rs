@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use auditah::audit::report::AuditReport;
 use clap::Args;
 
 use auditah::audit::{run_audit, AuditCtx};
@@ -49,7 +50,7 @@ pub fn run(cmd: &AuditCmd) -> i32 {
 }
 
 /// Render the report grouped by severity: FAILs first, then FLAGs.
-fn render_report(report: &auditah::audit::report::AuditReport) {
+fn render_report(report: &AuditReport) {
     use auditah::audit::report::Severity;
     if report.findings.is_empty() {
         println!("audit: clean — no findings");

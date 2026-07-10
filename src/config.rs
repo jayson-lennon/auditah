@@ -55,9 +55,10 @@ mod tests {
     use super::*;
     use crate::services::fs::{FsBackend, FsError};
     use error_stack::Report;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
-    use std::sync::Mutex;
+    use std::sync::Arc;
 
     struct FakeFs {
         files: Mutex<HashMap<PathBuf, String>>,
@@ -66,23 +67,18 @@ mod tests {
         fn read_to_string(&self, p: &Path) -> Result<String, Report<FsError>> {
             self.files
                 .lock()
-                .unwrap()
                 .get(p)
                 .cloned()
                 .ok_or_else(|| Report::new(FsError))
         }
         fn write(&self, p: &Path, c: &str) -> Result<(), Report<FsError>> {
-            self.files
-                .lock()
-                .unwrap()
-                .insert(p.to_path_buf(), c.to_string());
+            self.files.lock().insert(p.to_path_buf(), c.to_string());
             Ok(())
         }
         fn list_dir(&self, p: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
             Ok(self
                 .files
                 .lock()
-                .unwrap()
                 .keys()
                 .filter(|k| k.parent() == Some(p))
                 .cloned()
@@ -92,7 +88,7 @@ mod tests {
             Ok(Vec::new())
         }
         fn exists(&self, p: &Path) -> bool {
-            self.files.lock().unwrap().contains_key(p)
+            self.files.lock().contains_key(p)
         }
         fn name(&self) -> &'static str {
             "FakeFs"
@@ -104,7 +100,7 @@ mod tests {
         for (k, v) in files {
             map.insert(PathBuf::from(k), (*v).to_string());
         }
-        FsService::new(std::sync::Arc::new(FakeFs {
+        FsService::new(Arc::new(FakeFs {
             files: Mutex::new(map),
         }))
     }

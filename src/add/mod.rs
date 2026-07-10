@@ -4,7 +4,7 @@
 //! (`<asset>.attr.toml`) or a directory manifest (`manifest.toml`) via
 //! `toml_edit`, so the emitted files carry human-readable field comments.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use error_stack::{Report, ResultExt};
 use toml_edit::{table, value, DocumentMut};
@@ -85,7 +85,7 @@ pub fn write_manifest(
 
 /// Compute the sidecar path for an asset: `<asset>.attr.toml`.
 #[must_use]
-pub fn sidecar_path(asset_path: &Path) -> std::path::PathBuf {
+pub fn sidecar_path(asset_path: &Path) -> PathBuf {
     // Append `.attr.toml` to the full file name (preserves any extension).
     let mut name = asset_path
         .file_name()
@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn sidecar_path_appends_attr_toml() {
-        let p = sidecar_path(std::path::Path::new("/proj/sword.glb"));
-        assert_eq!(p, std::path::PathBuf::from("/proj/sword.glb.attr.toml"));
+        let p = sidecar_path(Path::new("/proj/sword.glb"));
+        assert_eq!(p, PathBuf::from("/proj/sword.glb.attr.toml"));
     }
 }
