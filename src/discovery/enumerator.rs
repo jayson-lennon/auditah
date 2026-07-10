@@ -92,8 +92,8 @@ fn filter_candidates(all: &[PathBuf], root: &Path, excludes: &ExcludeMatcher) ->
 mod tests {
     use super::*;
     use crate::services::fs::{FsBackend, FsError};
-    use std::collections::HashMap;
-    use std::sync::Mutex;
+    use parking_lot::Mutex;
+    use std::{collections::HashMap, sync::Arc};
 
     struct FakeFs {
         files: Mutex<HashMap<PathBuf, String>>,
@@ -102,7 +102,6 @@ mod tests {
         fn read_to_string(&self, p: &Path) -> Result<String, Report<FsError>> {
             self.files
                 .lock()
-                .unwrap()
                 .get(p)
                 .cloned()
                 .ok_or_else(|| Report::new(FsError))
@@ -114,16 +113,10 @@ mod tests {
             Ok(Vec::new())
         }
         fn walk(&self, _root: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
-            Ok(self
-                .files
-                .lock()
-                .unwrap()
-                .keys()
-                .cloned()
-                .collect::<Vec<_>>())
+            Ok(self.files.lock().keys().cloned().collect::<Vec<_>>())
         }
         fn exists(&self, p: &Path) -> bool {
-            self.files.lock().unwrap().contains_key(p)
+            self.files.lock().contains_key(p)
         }
         fn name(&self) -> &'static str {
             "FakeFs"
@@ -135,7 +128,7 @@ mod tests {
         for p in paths {
             map.insert(PathBuf::from(p), String::new());
         }
-        FsService::new(std::sync::Arc::new(FakeFs {
+        FsService::new(Arc::new(FakeFs {
             files: Mutex::new(map),
         }))
     }

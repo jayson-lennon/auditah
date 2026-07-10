@@ -5,7 +5,7 @@
 //! Each license is two files: `<id>.toml` (metadata + terms) and `<id>.txt`
 //! (full legal text). The loader composes the two into a `LicenseRegistryEntry`.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::model::license::LicenseRegistryEntry;
 
@@ -69,6 +69,8 @@ pub fn embedded_entries() -> HashMap<String, LicenseRegistryEntry> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::model::terms::{effective_terms, Overrides};
     use crate::services::fs::FsError;
@@ -148,51 +150,41 @@ mod tests {
     #[test]
     fn project_local_license_overrides_embedded_by_id() {
         use crate::services::fs::{FsBackend, FsService};
+        use parking_lot::Mutex;
         use std::collections::HashMap;
         use std::path::Path;
-        use std::sync::Mutex;
 
         struct FakeFs {
-            files: Mutex<HashMap<std::path::PathBuf, String>>,
+            files: Mutex<HashMap<PathBuf, String>>,
         }
         impl FsBackend for FakeFs {
             fn read_to_string(&self, p: &Path) -> Result<String, Report<FsError>> {
                 self.files
                     .lock()
-                    .unwrap()
                     .get(p)
                     .cloned()
                     .ok_or_else(|| Report::new(FsError))
             }
             fn write(&self, p: &Path, c: &str) -> Result<(), Report<FsError>> {
-                self.files
-                    .lock()
-                    .unwrap()
-                    .insert(p.to_path_buf(), c.to_string());
+                self.files.lock().insert(p.to_path_buf(), c.to_string());
                 Ok(())
             }
-            fn list_dir(&self, p: &Path) -> Result<Vec<std::path::PathBuf>, Report<FsError>> {
+            fn list_dir(&self, p: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
                 let names = self
                     .files
                     .lock()
-                    .unwrap()
                     .keys()
                     .filter(|k| k.parent() == Some(p))
                     .cloned()
                     .collect();
                 Ok(names)
             }
-            fn walk(&self, _root: &Path) -> Result<Vec<std::path::PathBuf>, Report<FsError>> {
+            fn walk(&self, _root: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
                 Ok(Vec::new())
             }
             fn exists(&self, p: &Path) -> bool {
-                self.files.lock().unwrap().contains_key(p)
-                    || self
-                        .files
-                        .lock()
-                        .unwrap()
-                        .keys()
-                        .any(|k| k.parent() == Some(p))
+                self.files.lock().contains_key(p)
+                    || self.files.lock().keys().any(|k| k.parent() == Some(p))
             }
             fn name(&self) -> &'static str {
                 "FakeFs"
@@ -215,15 +207,12 @@ mod tests {
             allows_commercial_use = false
             allows_modifications = true
         "#;
-        files.insert(
-            std::path::PathBuf::from("/proj/licenses/MIT.toml"),
-            toml.to_string(),
-        );
-        let fs = FsService::new(std::sync::Arc::new(FakeFs {
+        files.insert(PathBuf::from("/proj/licenses/MIT.toml"), toml.to_string());
+        let fs = FsService::new(Arc::new(FakeFs {
             files: Mutex::new(files),
         }));
 
-        let reg = LicenseRegistry::load(&fs, std::path::Path::new("/proj")).unwrap();
+        let reg = LicenseRegistry::load(&fs, Path::new("/proj")).unwrap();
         let mit = reg.get("MIT").unwrap();
         assert_eq!(mit.name, "MIT (overridden)");
         assert!(!mit.terms.allows_commercial_use);
@@ -232,51 +221,41 @@ mod tests {
     #[test]
     fn project_local_licenseref_added_to_registry() {
         use crate::services::fs::{FsBackend, FsService};
+        use parking_lot::Mutex;
         use std::collections::HashMap;
         use std::path::Path;
-        use std::sync::Mutex;
 
         struct FakeFs {
-            files: Mutex<HashMap<std::path::PathBuf, String>>,
+            files: Mutex<HashMap<PathBuf, String>>,
         }
         impl FsBackend for FakeFs {
             fn read_to_string(&self, p: &Path) -> Result<String, Report<FsError>> {
                 self.files
                     .lock()
-                    .unwrap()
                     .get(p)
                     .cloned()
                     .ok_or_else(|| Report::new(FsError))
             }
             fn write(&self, p: &Path, c: &str) -> Result<(), Report<FsError>> {
-                self.files
-                    .lock()
-                    .unwrap()
-                    .insert(p.to_path_buf(), c.to_string());
+                self.files.lock().insert(p.to_path_buf(), c.to_string());
                 Ok(())
             }
-            fn list_dir(&self, p: &Path) -> Result<Vec<std::path::PathBuf>, Report<FsError>> {
+            fn list_dir(&self, p: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
                 let names = self
                     .files
                     .lock()
-                    .unwrap()
                     .keys()
                     .filter(|k| k.parent() == Some(p))
                     .cloned()
                     .collect();
                 Ok(names)
             }
-            fn walk(&self, _root: &Path) -> Result<Vec<std::path::PathBuf>, Report<FsError>> {
+            fn walk(&self, _root: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
                 Ok(Vec::new())
             }
             fn exists(&self, p: &Path) -> bool {
-                self.files.lock().unwrap().contains_key(p)
-                    || self
-                        .files
-                        .lock()
-                        .unwrap()
-                        .keys()
-                        .any(|k| k.parent() == Some(p))
+                self.files.lock().contains_key(p)
+                    || self.files.lock().keys().any(|k| k.parent() == Some(p))
             }
             fn name(&self) -> &'static str {
                 "FakeFs"
@@ -299,14 +278,14 @@ mod tests {
             allows_modifications = false
         "#;
         files.insert(
-            std::path::PathBuf::from("/proj/licenses/LicenseRef-StudioEULA.toml"),
+            PathBuf::from("/proj/licenses/LicenseRef-StudioEULA.toml"),
             toml.to_string(),
         );
-        let fs = FsService::new(std::sync::Arc::new(FakeFs {
+        let fs = FsService::new(Arc::new(FakeFs {
             files: Mutex::new(files),
         }));
 
-        let reg = LicenseRegistry::load(&fs, std::path::Path::new("/proj")).unwrap();
+        let reg = LicenseRegistry::load(&fs, Path::new("/proj")).unwrap();
         assert_eq!(reg.len(), 5, "4 embedded + 1 LicenseRef");
         let custom = reg.get("LicenseRef-StudioEULA").unwrap();
         assert!(!custom.terms.allows_modifications);
@@ -396,10 +375,7 @@ fn merge_project_local(
 }
 
 /// List `*.toml` files in the local `licenses/` dir.
-fn list_local_tomls(
-    fs: &FsService,
-    dir: &Path,
-) -> Result<Vec<std::path::PathBuf>, Report<RegistryError>> {
+fn list_local_tomls(fs: &FsService, dir: &Path) -> Result<Vec<PathBuf>, Report<RegistryError>> {
     Ok(fs
         .list_dir(dir)
         .change_context(RegistryError)

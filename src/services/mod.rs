@@ -2,9 +2,13 @@
 
 pub mod fs;
 
+use std::{path::Path, sync::Arc};
+
 pub use fs::{FsBackend, FsError, FsService, RealFs};
 
 use derive_more::Debug;
+
+use crate::registry::LicenseRegistry;
 
 /// Dependency-injection container. Constructed once in `main` (real backends)
 /// or in tests (fakes). Cheap to clone; every field is a service wrapper.
@@ -13,7 +17,7 @@ use derive_more::Debug;
 #[derive(Debug, Clone)]
 pub struct Services {
     pub fs: FsService,
-    pub registry: crate::registry::LicenseRegistry,
+    pub registry: LicenseRegistry,
 }
 
 impl Services {
@@ -23,10 +27,10 @@ impl Services {
     #[must_use]
     pub fn real() -> Self {
         Self {
-            fs: FsService::new(std::sync::Arc::new(RealFs::new())),
-            registry: crate::registry::LicenseRegistry::load(
-                &FsService::new(std::sync::Arc::new(RealFs::new())),
-                std::path::Path::new("."),
+            fs: FsService::new(Arc::new(RealFs::new())),
+            registry: LicenseRegistry::load(
+                &FsService::new(Arc::new(RealFs::new())),
+                Path::new("."),
             )
             .expect("failed to load license registry"),
         }
@@ -35,7 +39,7 @@ impl Services {
     /// Build a service container from explicit parts. Used by tests and by
     /// callers that construct pieces independently (e.g. command runners).
     #[must_use]
-    pub fn from_parts(fs: FsService, registry: crate::registry::LicenseRegistry) -> Self {
+    pub fn from_parts(fs: FsService, registry: LicenseRegistry) -> Self {
         Self { fs, registry }
     }
 }
@@ -45,9 +49,9 @@ mod tests {
     use super::*;
     use crate::services::fs::{FsBackend, FsError};
     use error_stack::Report;
+    use parking_lot::Mutex;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
-    use std::sync::Mutex;
 
     /// In-memory fake backend for unit tests (no real filesystem).
     struct FakeFs {
@@ -66,7 +70,6 @@ mod tests {
         fn read_to_string(&self, path: &Path) -> Result<String, Report<FsError>> {
             self.files
                 .lock()
-                .unwrap()
                 .get(path)
                 .cloned()
                 .ok_or_else(|| Report::new(FsError))
@@ -74,7 +77,6 @@ mod tests {
         fn write(&self, path: &Path, content: &str) -> Result<(), Report<FsError>> {
             self.files
                 .lock()
-                .unwrap()
                 .insert(path.to_path_buf(), content.to_string());
             Ok(())
         }
@@ -82,10 +84,10 @@ mod tests {
             Ok(Vec::new())
         }
         fn walk(&self, _root: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
-            Ok(self.files.lock().unwrap().keys().cloned().collect())
+            Ok(self.files.lock().keys().cloned().collect())
         }
         fn exists(&self, path: &Path) -> bool {
-            self.files.lock().unwrap().contains_key(path)
+            self.files.lock().contains_key(path)
         }
         fn name(&self) -> &'static str {
             "FakeFs"
@@ -100,8 +102,8 @@ mod tests {
     #[test]
     fn fs_service_round_trip_via_fake_backend() {
         let services = Services {
-            fs: FsService::new(std::sync::Arc::new(FakeFs::empty())),
-            registry: crate::registry::LicenseRegistry::embedded_only(),
+            fs: FsService::new(Arc::new(FakeFs::empty())),
+            registry: LicenseRegistry::embedded_only(),
         };
         let path = Path::new("/tmp/fake.txt");
         services.fs.write(path, "hello").unwrap();

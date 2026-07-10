@@ -95,10 +95,12 @@ fn try_write(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::registry::LicenseRegistry;
     use crate::services::fs::{FsBackend, FsError, FsService};
+    use parking_lot::Mutex;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
-    use std::sync::Mutex;
+    use std::sync::Arc;
 
     /// A minimal in-memory FsBackend backed by a HashMap.
     struct FakeFs {
@@ -117,16 +119,12 @@ mod tests {
         fn read_to_string(&self, p: &Path) -> Result<String, Report<FsError>> {
             self.files
                 .lock()
-                .unwrap()
                 .get(p)
                 .cloned()
                 .ok_or_else(|| Report::new(FsError))
         }
         fn write(&self, p: &Path, c: &str) -> Result<(), Report<FsError>> {
-            self.files
-                .lock()
-                .unwrap()
-                .insert(p.to_path_buf(), c.to_string());
+            self.files.lock().insert(p.to_path_buf(), c.to_string());
             Ok(())
         }
         fn list_dir(&self, _p: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
@@ -136,7 +134,7 @@ mod tests {
             Ok(Vec::new())
         }
         fn exists(&self, p: &Path) -> bool {
-            self.files.lock().unwrap().contains_key(p)
+            self.files.lock().contains_key(p)
         }
         fn name(&self) -> &'static str {
             "FakeFs"
@@ -145,8 +143,8 @@ mod tests {
 
     #[test]
     fn writes_all_embedded_licenses() {
-        let fs = FsService::new(std::sync::Arc::new(FakeFs::empty()));
-        let registry = crate::registry::LicenseRegistry::embedded_only();
+        let fs = FsService::new(Arc::new(FakeFs::empty()));
+        let registry = LicenseRegistry::embedded_only();
         let services = Services::from_parts(fs.clone(), registry);
         let outcome = init_licenses(&services, Path::new("/proj")).unwrap();
         // CC0, CC-BY-3.0, MIT, OFL-1.1 — all seeded with text.
@@ -160,13 +158,13 @@ mod tests {
 
     #[test]
     fn skips_files_with_matching_content() {
-        let fs = FsService::new(std::sync::Arc::new(FakeFs::empty()));
+        let fs = FsService::new(Arc::new(FakeFs::empty()));
         // Pre-seed MIT with its embedded text.
-        let reg = crate::registry::LicenseRegistry::embedded_only();
+        let reg = LicenseRegistry::embedded_only();
         let mit_text = reg.get("MIT").unwrap().text.clone();
         fs.write(&PathBuf::from("/proj/LICENSES/MIT.txt"), &mit_text)
             .unwrap();
-        let registry = crate::registry::LicenseRegistry::embedded_only();
+        let registry = LicenseRegistry::embedded_only();
         let services = Services::from_parts(fs.clone(), registry);
         let outcome = init_licenses(&services, Path::new("/proj")).unwrap();
         assert_eq!(outcome.skipped, 1, "MIT already matches");
@@ -175,14 +173,14 @@ mod tests {
 
     #[test]
     fn errors_when_existing_file_diverges() {
-        let fs = FsService::new(std::sync::Arc::new(FakeFs::empty()));
+        let fs = FsService::new(Arc::new(FakeFs::empty()));
         // Pre-seed MIT with divergent (human-edited) text.
         fs.write(
             &PathBuf::from("/proj/LICENSES/MIT.txt"),
             "human-edited version",
         )
         .unwrap();
-        let registry = crate::registry::LicenseRegistry::embedded_only();
+        let registry = LicenseRegistry::embedded_only();
         let services = Services::from_parts(fs, registry);
         let result = init_licenses(&services, Path::new("/proj"));
         assert!(result.is_err(), "divergent file must error, not clobber");

@@ -166,8 +166,8 @@ fn strip_sidecar_suffix(sidecar: &Path) -> PathBuf {
 mod tests {
     use super::*;
     use crate::services::fs::{FsBackend, FsError};
-    use std::collections::HashMap;
-    use std::sync::Mutex;
+    use parking_lot::Mutex;
+    use std::{collections::HashMap, sync::Arc};
 
     struct FakeFs {
         files: Mutex<HashMap<PathBuf, String>>,
@@ -176,7 +176,6 @@ mod tests {
         fn read_to_string(&self, p: &Path) -> Result<String, Report<FsError>> {
             self.files
                 .lock()
-                .unwrap()
                 .get(p)
                 .cloned()
                 .ok_or_else(|| Report::new(FsError))
@@ -188,10 +187,10 @@ mod tests {
             Ok(Vec::new())
         }
         fn walk(&self, _root: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
-            Ok(self.files.lock().unwrap().keys().cloned().collect())
+            Ok(self.files.lock().keys().cloned().collect())
         }
         fn exists(&self, p: &Path) -> bool {
-            self.files.lock().unwrap().contains_key(p) || p.exists()
+            self.files.lock().contains_key(p) || p.exists()
         }
         fn name(&self) -> &'static str {
             "FakeFs"
@@ -214,7 +213,7 @@ source = "https://example.com"
         for (k, v) in files {
             map.insert(PathBuf::from(k), (*v).to_string());
         }
-        FsService::new(std::sync::Arc::new(FakeFs {
+        FsService::new(Arc::new(FakeFs {
             files: Mutex::new(map),
         }))
     }

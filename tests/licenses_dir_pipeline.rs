@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use auditah::audit::report::{FindingCode, Severity};
+use auditah::audit::report::{AuditReport, FindingCode, Severity};
 use auditah::audit::{run_audit, AuditCtx};
 use auditah::config::Config;
 use auditah::init_licenses::init_licenses;
@@ -28,7 +28,7 @@ fn config() -> Config {
     }
 }
 
-fn codes_for(report: &auditah::audit::report::AuditReport, needle: &str) -> Vec<FindingCode> {
+fn codes_for(report: &AuditReport, needle: &str) -> Vec<FindingCode> {
     report
         .findings
         .iter()
