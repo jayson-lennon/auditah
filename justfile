@@ -1,16 +1,13 @@
 # auditah justfile
 # Reference: https://github.com/casey/just
 
-# Default target: run tests
-default: test
+# Run all tests
+test:
+    cargo nextest run
 
 # Build the binary
 build:
     cargo build
-
-# Run all tests
-test:
-    cargo test
 
 # Check without producing artifacts
 check:
