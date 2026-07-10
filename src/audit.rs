@@ -66,7 +66,7 @@ pub fn run_audit(ctx: &AuditCtx) -> Result<AuditReport, Report<AuditError>> {
             if let Some(entry) = ctx.services.registry.get(&record.license) {
                 check_license_text(asset, &entry.id, ctx, &mut report);
                 let terms = effective_terms(&entry.terms, &record.overrides);
-                check_obligations(asset, record, &terms, ctx.config, &mut report);
+                check_obligations(asset, record, &entry.id, &terms, ctx.config, &mut report);
             }
         }
     }
@@ -134,31 +134,54 @@ fn check_license_text(asset: &Path, license_id: &str, ctx: &AuditCtx, report: &m
 fn check_obligations(
     asset: &Path,
     record: &crate::model::attribution::AttributionRecord,
+    license_id: &str,
     terms: &crate::model::terms::LicenseTerms,
     config: &Config,
     report: &mut AuditReport,
 ) {
-    // Attribution: needs title + author + source.
-    if terms.requires_attribution {
-        let missing_field = if record.title.trim().is_empty() {
-            Some("title")
-        } else if record.author.trim().is_empty() {
-            Some("author")
-        } else if record.source.trim().is_empty() {
-            Some("source")
-        } else {
-            None
-        };
-        if let Some(field) = missing_field {
-            report.push(Finding::fail(
-                FindingCode::IncompleteAttribution,
-                asset.to_path_buf(),
-                format!("license requires attribution but {field} is missing"),
-            ));
-        }
-    }
+    check_attribution(asset, record, terms, report);
+    check_commercial_boundary(asset, terms, config, report);
+    check_redistribution_boundary(asset, terms, config, report);
+    check_derivatives_boundary(asset, record, terms, report);
+    check_manual_review(asset, license_id, terms, config, report);
+    check_manual_review_flags(asset, terms, report);
+}
 
-    // Commercial use boundary.
+/// Attribution: needs title + author + source when the obligation is set.
+fn check_attribution(
+    asset: &Path,
+    record: &crate::model::attribution::AttributionRecord,
+    terms: &crate::model::terms::LicenseTerms,
+    report: &mut AuditReport,
+) {
+    if !terms.requires_attribution {
+        return;
+    }
+    let missing_field = if record.title.trim().is_empty() {
+        Some("title")
+    } else if record.author.trim().is_empty() {
+        Some("author")
+    } else if record.source.trim().is_empty() {
+        Some("source")
+    } else {
+        None
+    };
+    if let Some(field) = missing_field {
+        report.push(Finding::fail(
+            FindingCode::IncompleteAttribution,
+            asset.to_path_buf(),
+            format!("license requires attribution but {field} is missing"),
+        ));
+    }
+}
+
+/// Commercial use boundary: a commercial project cannot use non-commercial assets.
+fn check_commercial_boundary(
+    asset: &Path,
+    terms: &crate::model::terms::LicenseTerms,
+    config: &Config,
+    report: &mut AuditReport,
+) {
     if config.commercial_project && !terms.allows_commercial_use {
         report.push(Finding::fail(
             FindingCode::NotCommerciallyLicensed,
@@ -166,24 +189,86 @@ fn check_obligations(
             "project is commercial but asset is not licensed for commercial use",
         ));
     }
+}
 
-    // Modifications boundary.
-    if record.modified && !terms.allows_modifications {
+/// Redistribution boundary: a redistributing project cannot use no-redistribution assets.
+fn check_redistribution_boundary(
+    asset: &Path,
+    terms: &crate::model::terms::LicenseTerms,
+    config: &Config,
+    report: &mut AuditReport,
+) {
+    if config.redistributes_assets && !terms.allows_redistribution {
         report.push(Finding::fail(
-            FindingCode::ModifiedUnderNoDerivatives,
+            FindingCode::RedistributionViolation,
             asset.to_path_buf(),
-            "asset is modified but license disallows derivatives",
+            "project redistributes assets but license forbids redistribution",
         ));
     }
+}
 
-    // Manual-review flags: cannot auto-verify, surface for human action.
-    if terms.requires_share_alike {
-        report.push(Finding::flag(
-            FindingCode::ShareAlikeReview,
+/// Derivatives boundary: a single exhaustive match over the [`Derivatives`] enum.
+///
+/// `Disallowed` + `modified` is a Fail; `ShareAlike` surfaces a review Flag;
+/// `Allowed` is clean. No dead branches — the match is exhaustive by construction.
+fn check_derivatives_boundary(
+    asset: &Path,
+    record: &crate::model::attribution::AttributionRecord,
+    terms: &crate::model::terms::LicenseTerms,
+    report: &mut AuditReport,
+) {
+    use crate::model::terms::Derivatives;
+    match terms.derivatives {
+        Derivatives::Disallowed => {
+            if record.modified {
+                report.push(Finding::fail(
+                    FindingCode::ModifiedUnderNoDerivatives,
+                    asset.to_path_buf(),
+                    "asset is modified but license disallows derivatives",
+                ));
+            }
+        }
+        Derivatives::Allowed => {}
+        Derivatives::ShareAlike => {
+            report.push(Finding::flag(
+                FindingCode::ShareAlikeReview,
+                asset.to_path_buf(),
+                "license requires share-alike; confirm distribution license compatibility",
+            ));
+        }
+    }
+}
+
+/// Manual review: fail-closed. A license marked `manual_review` FAILs the audit
+/// until its id is listed in `manual_review_acknowledged` in the project config.
+fn check_manual_review(
+    asset: &Path,
+    license_id: &str,
+    terms: &crate::model::terms::LicenseTerms,
+    config: &Config,
+    report: &mut AuditReport,
+) {
+    let acknowledged = config
+        .manual_review_acknowledged
+        .iter()
+        .any(|id| id == license_id);
+    if terms.manual_review && !acknowledged {
+        report.push(Finding::fail(
+            FindingCode::ManualReviewRequired,
             asset.to_path_buf(),
-            "license requires share-alike; confirm distribution license compatibility",
+            format!(
+                "license {license_id:?} requires manual review; add it to `manual_review_acknowledged` in auditah.toml after review"
+            ),
         ));
     }
+}
+
+/// Manual-review flags: obligations the auditor cannot auto-verify, surfaced for human action.
+fn check_manual_review_flags(
+    asset: &Path,
+    terms: &crate::model::terms::LicenseTerms,
+    report: &mut AuditReport,
+) {
     if terms.requires_source_disclosure {
         report.push(Finding::flag(
             FindingCode::SourceDisclosureReview,

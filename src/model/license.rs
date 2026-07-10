@@ -29,6 +29,7 @@ pub struct LicenseRegistryEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::terms::Derivatives;
 
     fn cc0_entry() -> LicenseRegistryEntry {
         LicenseRegistryEntry {
@@ -40,10 +41,11 @@ mod tests {
                 requires_attribution: false,
                 requires_license_notice: false,
                 requires_source_disclosure: false,
-                requires_share_alike: false,
+                derivatives: Derivatives::Allowed,
                 requires_modification_notice: false,
                 allows_commercial_use: true,
-                allows_modifications: true,
+                allows_redistribution: true,
+                manual_review: false,
             },
             notes: None,
         }

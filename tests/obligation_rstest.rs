@@ -80,7 +80,7 @@ source = "https://example.com"
 modified = true
 
 [overrides]
-allows_modifications = false
+derivatives = "disallowed"
 "#,
     non_commercial_config(),
     FindingCode::ModifiedUnderNoDerivatives

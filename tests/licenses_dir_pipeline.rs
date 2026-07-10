@@ -97,10 +97,11 @@ text = "CUSTOM LICENSE TEXT BODY"
 requires_attribution = true
 requires_license_notice = false
 requires_source_disclosure = false
-requires_share_alike = false
-requires_modification_notice = false
-allows_commercial_use = true
-allows_modifications = true
+            derivatives = "allowed"
+            requires_modification_notice = false
+            allows_commercial_use = true
+            allows_redistribution = true
+            manual_review = false
 "#,
         },
     };
