@@ -24,12 +24,17 @@ walkdir = "2"
 globset = "0.4"
 spdx = "0.10"
 derive_more = { version = "1", features = ["debug"] }
+parking_lot = { version = "0.12.5", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
 temptree = "0.2"
 rstest = "0.22"
-parking_lot = "0.12.5"
+auditah = { path = ".", features = ["test-helper"] }
+
+[features]
+test-helper = ["dep:parking_lot"]
+
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

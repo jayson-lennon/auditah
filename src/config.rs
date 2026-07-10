@@ -53,56 +53,14 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::fs::{FsBackend, FsError};
-    use error_stack::Report;
-    use parking_lot::Mutex;
-    use std::collections::HashMap;
-    use std::path::{Path, PathBuf};
+    use crate::test_support::FakeFs;
+    use std::path::Path;
     use std::sync::Arc;
 
-    struct FakeFs {
-        files: Mutex<HashMap<PathBuf, String>>,
-    }
-    impl FsBackend for FakeFs {
-        fn read_to_string(&self, p: &Path) -> Result<String, Report<FsError>> {
-            self.files
-                .lock()
-                .get(p)
-                .cloned()
-                .ok_or_else(|| Report::new(FsError))
-        }
-        fn write(&self, p: &Path, c: &str) -> Result<(), Report<FsError>> {
-            self.files.lock().insert(p.to_path_buf(), c.to_string());
-            Ok(())
-        }
-        fn list_dir(&self, p: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
-            Ok(self
-                .files
-                .lock()
-                .keys()
-                .filter(|k| k.parent() == Some(p))
-                .cloned()
-                .collect())
-        }
-        fn walk(&self, _root: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
-            Ok(Vec::new())
-        }
-        fn exists(&self, p: &Path) -> bool {
-            self.files.lock().contains_key(p)
-        }
-        fn name(&self) -> &'static str {
-            "FakeFs"
-        }
-    }
-
     fn fs_with(files: &[(&str, &str)]) -> FsService {
-        let mut map = HashMap::new();
-        for (k, v) in files {
-            map.insert(PathBuf::from(k), (*v).to_string());
-        }
-        FsService::new(Arc::new(FakeFs {
-            files: Mutex::new(map),
-        }))
+        FsService::new(Arc::new(FakeFs::with_files(
+            files.iter().map(|(p, c)| (*p, *c)),
+        )))
     }
 
     #[test]

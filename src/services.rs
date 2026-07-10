@@ -57,52 +57,9 @@ impl Services {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::fs::{FsBackend, FsError};
-    use error_stack::Report;
-    use parking_lot::Mutex;
-    use std::collections::HashMap;
-    use std::path::{Path, PathBuf};
-
-    /// In-memory fake backend for unit tests (no real filesystem).
-    struct FakeFs {
-        files: Mutex<HashMap<PathBuf, String>>,
-    }
-
-    impl FakeFs {
-        fn empty() -> Self {
-            Self {
-                files: Mutex::new(HashMap::new()),
-            }
-        }
-    }
-
-    impl FsBackend for FakeFs {
-        fn read_to_string(&self, path: &Path) -> Result<String, Report<FsError>> {
-            self.files
-                .lock()
-                .get(path)
-                .cloned()
-                .ok_or_else(|| Report::new(FsError))
-        }
-        fn write(&self, path: &Path, content: &str) -> Result<(), Report<FsError>> {
-            self.files
-                .lock()
-                .insert(path.to_path_buf(), content.to_string());
-            Ok(())
-        }
-        fn list_dir(&self, _path: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
-            Ok(Vec::new())
-        }
-        fn walk(&self, _root: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
-            Ok(self.files.lock().keys().cloned().collect())
-        }
-        fn exists(&self, path: &Path) -> bool {
-            self.files.lock().contains_key(path)
-        }
-        fn name(&self) -> &'static str {
-            "FakeFs"
-        }
-    }
+    use crate::test_support::FakeFs;
+    use std::path::Path;
+    use std::sync::Arc;
 
     #[test]
     fn services_real_constructs() {
@@ -112,7 +69,7 @@ mod tests {
     #[test]
     fn fs_service_round_trip_via_fake_backend() {
         let services = Services {
-            fs: FsService::new(Arc::new(FakeFs::empty())),
+            fs: FsService::new(Arc::new(FakeFs::default())),
             registry: LicenseRegistry::embedded_only(),
         };
         let path = Path::new("/tmp/fake.txt");

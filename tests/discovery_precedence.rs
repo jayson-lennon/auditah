@@ -2,28 +2,13 @@
 //! temp filesystem. These exercise `walkdir`/`globset` behavior that the
 //! in-memory unit-test fakes do not.
 
-use std::path::Path;
-use std::sync::Arc;
-
 use auditah::discovery::enumerator::{enumerate, ExcludeMatcher};
 use auditah::discovery::resolver::{resolve, ResolutionSource, MANIFEST_FILENAME, SIDECAR_SUFFIX};
-use auditah::services::fs::{FsService, RealFs};
 use temptree::temptree;
 
-fn real_fs() -> FsService {
-    FsService::new(Arc::new(RealFs::new()))
-}
+mod common;
+use common::{default_excludes, real_fs};
 
-fn default_excludes() -> ExcludeMatcher {
-    ExcludeMatcher::new(&auditah::discovery::all_excludes(&[])).unwrap()
-}
-
-fn record_toml(license: &str) -> &'static str {
-    // License is baked into the asset-specific files below; this helper is
-    // for the common shape. Individual tests inline their own.
-    let _ = license;
-    ""
-}
 
 #[test]
 fn sidecar_wins_over_manifest_in_same_dir() {
@@ -196,6 +181,4 @@ source = "https://poly.pizza/m/download/Gunny-Sack"
         .unwrap()
         .to_string_lossy()
         .contains("Gunny Sack"));
-    let _ = record_toml; // silence unused warning for helper
-    let _ = Path::new("x");
 }

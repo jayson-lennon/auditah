@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 /// fulfilled. `allows_*` fields are **permissions** — the auditor verifies the
 /// project stays inside the boundary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // Term flags are independent by design; enums would complicate TOML + merge.
 pub struct LicenseTerms {
     /// You MUST attribute the author (requires `title` + `author` + `source`).
     pub requires_attribution: bool,
