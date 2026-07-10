@@ -3,11 +3,13 @@
 use std::path::PathBuf;
 
 use auditah::audit::report::AuditReport;
+use auditah::AppError;
 use clap::Args;
 
 use auditah::audit::{run_audit, AuditCtx};
 use auditah::config::Config;
 use auditah::services::Services;
+use error_stack::{Report, ResultExt};
 
 /// Audit license compliance of assets under the project.
 #[derive(Debug, Args)]
@@ -19,34 +21,22 @@ pub struct AuditCmd {
 
 /// Run the audit command. Returns the process exit code (0 = clean, 1 = Fail
 /// findings present, 2 = pipeline error).
-pub fn run(cmd: &AuditCmd) -> i32 {
+pub fn run(cmd: &AuditCmd) -> Result<(), Report<AppError>> {
     let root = &cmd.root;
-    let services = Services::real();
-    let config = match Config::load(&services.fs, root) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("error: failed to load config: {e:?}");
-            return 2;
-        }
-    };
+    let services = Services::real().change_context(AppError)?;
+    let config = Config::load(&services.fs, root)
+        .change_context(AppError)
+        .attach("failed to load config")?;
     let ctx = AuditCtx {
         services: &services,
         config: &config,
         root,
     };
-    let report = match run_audit(&ctx) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("error: audit pipeline failed: {e:?}");
-            return 2;
-        }
-    };
+    let report = run_audit(&ctx)
+        .change_context(AppError)
+        .attach("audit pipeline failed")?;
     render_report(&report);
-    if report.has_failures() {
-        1
-    } else {
-        0
-    }
+    Ok(())
 }
 
 /// Render the report grouped by severity: FAILs first, then FLAGs.

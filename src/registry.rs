@@ -46,6 +46,7 @@ const EMBEDDED: &[EmbeddedDef] = &[
 /// Panics at startup if any embedded TOML fails to parse or has a mismatched
 /// `id` — these are compile-time-authored data, so malformed = bug.
 #[must_use]
+#[allow(clippy::missing_panics_doc)]
 pub fn embedded_entries() -> HashMap<String, LicenseRegistryEntry> {
     let mut map = HashMap::new();
     for def in EMBEDDED {
@@ -128,15 +129,14 @@ mod tests {
     // --- effective_terms override application (rstest-parameterized) ---
 
     #[rstest::rstest]
-    #[case::no_override("CC-BY-3.0", Overrides::default(), true, true, false)]
-    #[case::flip_commercial("CC-BY-3.0", Overrides { allows_commercial_use: Some(false), ..Default::default() }, true, false, false)]
-    #[case::flip_attribution("CC-BY-3.0", Overrides { requires_attribution: Some(false), ..Default::default() }, false, true, false)]
+    #[case::no_override("CC-BY-3.0", Overrides::default(), true, true)]
+    #[case::flip_commercial("CC-BY-3.0", Overrides { allows_commercial_use: Some(false), ..Default::default() }, true, false)]
+    #[case::flip_attribution("CC-BY-3.0", Overrides { requires_attribution: Some(false), ..Default::default() }, false, true)]
     fn effective_terms_applies_overrides(
         #[case] license_id: &str,
         #[case] overrides: Overrides,
         #[case] expect_attr: bool,
         #[case] expect_comm: bool,
-        #[case] _expect_share_alike: bool,
     ) {
         let reg = LicenseRegistry::embedded_only();
         let base = &reg.get(license_id).unwrap().terms;

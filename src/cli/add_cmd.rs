@@ -3,11 +3,15 @@
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+use auditah::model::terms::Overrides;
+use auditah::AppError;
 use clap::Args;
 
 use auditah::add::write_sidecar;
 use auditah::model::attribution::AttributionRecord;
 use auditah::services::Services;
+use error_stack::{Report, ResultExt};
+use wherror::Error;
 
 /// Scaffold an `<asset>.attr.toml` sidecar for a single asset.
 #[derive(Debug, Args)]
@@ -34,30 +38,17 @@ pub struct AddCmd {
     pub modified: bool,
 }
 /// Run the add command. Returns the process exit code.
-pub fn run(cmd: &AddCmd) -> i32 {
-    let record = match build_record(cmd) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return 2;
-        }
-    };
-    let services = Services::real();
-    match write_sidecar(&services, &cmd.file, &record) {
-        Ok(()) => {
-            println!("add: wrote {}.attr.toml", cmd.file.display());
-            0
-        }
-        Err(e) => {
-            eprintln!("error: {e:?}");
-            2
-        }
-    }
+pub fn run(cmd: &AddCmd) -> Result<(), Report<AppError>> {
+    let record = build_record(cmd).change_context(AppError)?;
+    let services = Services::real().change_context(AppError)?;
+    write_sidecar(&services, &cmd.file, &record).change_context(AppError)?;
+    println!("add: wrote {}.attr.toml", cmd.file.display());
+    Ok(())
 }
 
 /// Prompt interactively for any missing field. Flags provided on the CLI skip
 /// the prompt for that field.
-fn build_record(cmd: &AddCmd) -> Result<AttributionRecord, String> {
+fn build_record(cmd: &AddCmd) -> Result<AttributionRecord, Report<FieldError>> {
     let title = field(cmd.title.clone(), "Title")?;
     let author = field(cmd.author.clone(), "Author")?;
     let year = field_year(cmd.year)?;
@@ -71,33 +62,40 @@ fn build_record(cmd: &AddCmd) -> Result<AttributionRecord, String> {
         source,
         modified: cmd.modified,
         package: None,
-        overrides: Default::default(),
+        overrides: Overrides::default(),
     })
 }
+
+/// A field processing error.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub struct FieldError;
+
 /// Read one string field, prompting if `value` is None.
-fn field(value: Option<String>, prompt: &str) -> Result<String, String> {
+fn field(value: Option<String>, prompt: &str) -> Result<String, Report<FieldError>> {
     if let Some(v) = value {
         return Ok(v);
     }
     print!("{prompt}: ");
-    io::stdout().flush().map_err(|e| e.to_string())?;
+    io::stdout().flush().change_context(FieldError)?;
     let mut line = String::new();
     io::stdin()
         .read_line(&mut line)
-        .map_err(|e| e.to_string())?;
+        .change_context(FieldError)?;
     let trimmed = line.trim().to_string();
     if trimmed.is_empty() {
-        return Err(format!("{prompt} is required"));
+        return Err(Report::from(FieldError).attach(format!("{prompt} is required")));
     }
     Ok(trimmed)
 }
 
 /// Read the year, prompting if missing.
-fn field_year(year: Option<u16>) -> Result<u16, String> {
+fn field_year(year: Option<u16>) -> Result<u16, Report<FieldError>> {
     if let Some(y) = year {
         return Ok(y);
     }
     let raw = field(None, "Copyright year")?;
     raw.parse::<u16>()
-        .map_err(|_| "year must be a number".to_string())
+        .change_context(FieldError)
+        .attach("year must be a number")
 }

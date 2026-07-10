@@ -102,7 +102,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
-    /// A minimal in-memory FsBackend backed by a HashMap.
+    /// A minimal in-memory `FsBackend` backed by a `HashMap`.
     struct FakeFs {
         files: Mutex<HashMap<PathBuf, String>>,
     }

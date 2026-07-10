@@ -139,6 +139,7 @@ pub fn read_attribution(
 /// # Errors
 ///
 /// Returns an error if the filesystem walk fails.
+#[must_use]
 pub fn find_orphan_sidecars(fs: &FsService, all_files: &[PathBuf]) -> Vec<PathBuf> {
     all_files
         .iter()

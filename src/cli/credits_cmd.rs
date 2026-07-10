@@ -2,11 +2,13 @@
 
 use std::path::PathBuf;
 
+use auditah::AppError;
 use clap::Args;
 
 use auditah::config::Config;
 use auditah::credits::{default_output_path, generate_credits, CreditsCtx};
 use auditah::services::Services;
+use error_stack::{Report, ResultExt};
 
 /// Generate a CREDITS.md from attribution sidecars/manifests.
 #[derive(Debug, Args)]
@@ -21,16 +23,12 @@ pub struct CreditsCmd {
 }
 
 /// Run the credits command. Returns the process exit code.
-pub fn run(cmd: &CreditsCmd) -> i32 {
+pub fn run(cmd: &CreditsCmd) -> Result<(), Report<AppError>> {
     let root = &cmd.root;
-    let services = Services::real();
-    let config = match Config::load(&services.fs, root) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("error: failed to load config: {e:?}");
-            return 2;
-        }
-    };
+    let services = Services::real().change_context(AppError)?;
+    let config = Config::load(&services.fs, root)
+        .change_context(AppError)
+        .attach("failed to load config")?;
     let output = cmd
         .output
         .clone()
@@ -40,14 +38,9 @@ pub fn run(cmd: &CreditsCmd) -> i32 {
         config: &config,
         root,
     };
-    match generate_credits(&ctx, &output) {
-        Ok(()) => {
-            println!("credits: wrote {}", output.display());
-            0
-        }
-        Err(e) => {
-            eprintln!("error: failed to generate credits: {e:?}");
-            2
-        }
-    }
+    generate_credits(&ctx, &output)
+        .change_context(AppError)
+        .attach("failed to generate credits")?;
+    println!("credits: wrote {}", output.display());
+    Ok(())
 }

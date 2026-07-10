@@ -2,11 +2,14 @@
 
 use std::path::PathBuf;
 
+use auditah::model::terms::Overrides;
+use auditah::AppError;
 use clap::Args;
 
 use auditah::add::write_manifest;
 use auditah::model::attribution::AttributionRecord;
 use auditah::services::Services;
+use error_stack::{Report, ResultExt};
 
 /// Write a `manifest.toml` covering a directory + its subdirs.
 #[derive(Debug, Args)]
@@ -36,7 +39,7 @@ pub struct InitPackCmd {
 }
 
 /// Run the init-pack command. Returns the process exit code.
-pub fn run(cmd: &InitPackCmd) -> i32 {
+pub fn run(cmd: &InitPackCmd) -> Result<(), Report<AppError>> {
     let title = cmd
         .title
         .clone()
@@ -52,24 +55,18 @@ pub fn run(cmd: &InitPackCmd) -> i32 {
         year: cmd.year.unwrap_or_else(|| {
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| u16::try_from(d.as_secs() / 31_557_600).unwrap_or(2025))
-                .unwrap_or(2025)
+                .map_or(2025, |d| {
+                    u16::try_from(d.as_secs() / 31_557_600).unwrap_or(2025)
+                })
         }),
         license: cmd.license.clone(),
         source: cmd.source.clone().unwrap_or_default(),
         modified: false,
         package: None,
-        overrides: Default::default(),
+        overrides: Overrides::default(),
     };
-    let services = Services::real();
-    match write_manifest(&services, &cmd.dir, &record) {
-        Ok(()) => {
-            println!("init-pack: wrote {}/manifest.toml", cmd.dir.display());
-            0
-        }
-        Err(e) => {
-            eprintln!("error: {e:?}");
-            2
-        }
-    }
+    let services = Services::real().change_context(AppError)?;
+    write_manifest(&services, &cmd.dir, &record).change_context(AppError)?;
+    println!("init-pack: wrote {}/manifest.toml", cmd.dir.display());
+    Ok(())
 }
