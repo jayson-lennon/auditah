@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use error_stack::{Report, ResultExt};
-use toml_edit::{value, table, DocumentMut};
+use toml_edit::{table, value, DocumentMut};
 use wherror::Error;
 
 use crate::model::attribution::AttributionRecord;

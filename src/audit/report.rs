@@ -155,8 +155,16 @@ mod tests {
     fn mixed_fail_and_flag_counted_separately() {
         let mut r = AuditReport::default();
         r.push(Finding::fail(FindingCode::UnknownLicense, asset(), "x"));
-        r.push(Finding::flag(FindingCode::LicenseNoticeReview, asset(), "y"));
-        r.push(Finding::fail(FindingCode::IncompleteAttribution, asset(), "z"));
+        r.push(Finding::flag(
+            FindingCode::LicenseNoticeReview,
+            asset(),
+            "y",
+        ));
+        r.push(Finding::fail(
+            FindingCode::IncompleteAttribution,
+            asset(),
+            "z",
+        ));
         assert_eq!(r.fail_count(), 2);
         assert_eq!(r.flag_count(), 1);
         assert!(r.has_failures());

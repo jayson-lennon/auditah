@@ -47,9 +47,17 @@ fn add_sidecar_makes_asset_pass_audit() {
     let svc = services();
     write_sidecar(&svc, &root.join("sword.glb"), &record("CC0-1.0")).unwrap();
 
-    let ctx = AuditCtx { services: &svc, config: &cfg(), root };
+    let ctx = AuditCtx {
+        services: &svc,
+        config: &cfg(),
+        root,
+    };
     let report = run_audit(&ctx).unwrap();
-    assert!(!report.has_failures(), "sidecarred asset must pass; got {:?}", report.findings);
+    assert!(
+        !report.has_failures(),
+        "sidecarred asset must pass; got {:?}",
+        report.findings
+    );
 }
 
 // `init-pack` writes a manifest that audit then accepts for every asset in the dir.
@@ -66,9 +74,17 @@ fn init_pack_manifest_covers_entire_directory() {
     let svc = services();
     write_manifest(&svc, &root.join("pack"), &record("CC0-1.0")).unwrap();
 
-    let ctx = AuditCtx { services: &svc, config: &cfg(), root };
+    let ctx = AuditCtx {
+        services: &svc,
+        config: &cfg(),
+        root,
+    };
     let report = run_audit(&ctx).unwrap();
-    assert!(!report.has_failures(), "manifest-covered dir must pass; got {:?}", report.findings);
+    assert!(
+        !report.has_failures(),
+        "manifest-covered dir must pass; got {:?}",
+        report.findings
+    );
 }
 
 // `init-pack` covers nested subdirectories too (manifest applies to subtree).
@@ -84,9 +100,17 @@ fn init_pack_manifest_covers_subdirectories() {
     let svc = services();
     write_manifest(&svc, &root.join("pack"), &record("CC0-1.0")).unwrap();
 
-    let ctx = AuditCtx { services: &svc, config: &cfg(), root };
+    let ctx = AuditCtx {
+        services: &svc,
+        config: &cfg(),
+        root,
+    };
     let report = run_audit(&ctx).unwrap();
-    assert!(!report.has_failures(), "manifest-covered subtree must pass; got {:?}", report.findings);
+    assert!(
+        !report.has_failures(),
+        "manifest-covered subtree must pass; got {:?}",
+        report.findings
+    );
 }
 
 // A sidecar written by `add` overrides a manifest written by `init-pack`.
@@ -105,9 +129,17 @@ fn add_sidecar_overrides_init_pack_manifest() {
     special.title = "Special".to_string();
     write_sidecar(&svc, &root.join("pack").join("special.glb"), &special).unwrap();
 
-    let ctx = AuditCtx { services: &svc, config: &cfg(), root };
+    let ctx = AuditCtx {
+        services: &svc,
+        config: &cfg(),
+        root,
+    };
     let report = run_audit(&ctx).unwrap();
-    assert!(!report.has_failures(), "sidecar override must win; got {:?}", report.findings);
+    assert!(
+        !report.has_failures(),
+        "sidecar override must win; got {:?}",
+        report.findings
+    );
 }
 
 // `render_record` output parses back to the same record (idempotent scaffold).

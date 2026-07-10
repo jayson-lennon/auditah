@@ -98,5 +98,6 @@ fn field_year(year: Option<u16>) -> Result<u16, String> {
         return Ok(y);
     }
     let raw = field(None, "Copyright year")?;
-    raw.parse::<u16>().map_err(|_| "year must be a number".to_string())
+    raw.parse::<u16>()
+        .map_err(|_| "year must be a number".to_string())
 }

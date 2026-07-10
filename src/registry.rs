@@ -49,12 +49,14 @@ const EMBEDDED: &[EmbeddedDef] = &[
 pub fn embedded_entries() -> HashMap<String, LicenseRegistryEntry> {
     let mut map = HashMap::new();
     for def in EMBEDDED {
-        let mut entry: LicenseRegistryEntry =
-            toml::from_str(def.toml).unwrap_or_else(|e| panic!("embedded {id} TOML malformed: {e}", id = def.id));
+        let mut entry: LicenseRegistryEntry = toml::from_str(def.toml)
+            .unwrap_or_else(|e| panic!("embedded {id} TOML malformed: {e}", id = def.id));
         assert_eq!(
-            entry.id, def.id,
+            entry.id,
+            def.id,
             "embedded license id mismatch: TOML says {toml_id}, file is {file_id}",
-            toml_id = entry.id, file_id = def.id
+            toml_id = entry.id,
+            file_id = def.id
         );
         // Fill the full legal text from the companion .txt (TOML omits it).
         if entry.text.is_empty() {
@@ -98,7 +100,9 @@ mod tests {
     #[case::ofl("OFL-1.1")]
     fn registry_lookup_returns_entry_for_known_id(#[case] id: &str) {
         let reg = LicenseRegistry::embedded_only();
-        let entry = reg.get(id).unwrap_or_else(|| panic!("{id} should be in registry"));
+        let entry = reg
+            .get(id)
+            .unwrap_or_else(|| panic!("{id} should be in registry"));
         assert_eq!(entry.id, id);
     }
 
@@ -153,19 +157,46 @@ mod tests {
         }
         impl FsBackend for FakeFs {
             fn read_to_string(&self, p: &Path) -> Result<String, Report<FsError>> {
-                self.files.lock().unwrap().get(p).cloned().ok_or_else(|| Report::new(FsError))
+                self.files
+                    .lock()
+                    .unwrap()
+                    .get(p)
+                    .cloned()
+                    .ok_or_else(|| Report::new(FsError))
             }
             fn write(&self, p: &Path, c: &str) -> Result<(), Report<FsError>> {
-                self.files.lock().unwrap().insert(p.to_path_buf(), c.to_string());
+                self.files
+                    .lock()
+                    .unwrap()
+                    .insert(p.to_path_buf(), c.to_string());
                 Ok(())
             }
             fn list_dir(&self, p: &Path) -> Result<Vec<std::path::PathBuf>, Report<FsError>> {
-                let names = self.files.lock().unwrap().keys().filter(|k| k.parent() == Some(p)).cloned().collect();
+                let names = self
+                    .files
+                    .lock()
+                    .unwrap()
+                    .keys()
+                    .filter(|k| k.parent() == Some(p))
+                    .cloned()
+                    .collect();
                 Ok(names)
             }
-            fn walk(&self, _root: &Path) -> Result<Vec<std::path::PathBuf>, Report<FsError>> { Ok(Vec::new()) }
-            fn exists(&self, p: &Path) -> bool { self.files.lock().unwrap().contains_key(p) || self.files.lock().unwrap().keys().any(|k| k.parent() == Some(p)) }
-            fn name(&self) -> &'static str { "FakeFs" }
+            fn walk(&self, _root: &Path) -> Result<Vec<std::path::PathBuf>, Report<FsError>> {
+                Ok(Vec::new())
+            }
+            fn exists(&self, p: &Path) -> bool {
+                self.files.lock().unwrap().contains_key(p)
+                    || self
+                        .files
+                        .lock()
+                        .unwrap()
+                        .keys()
+                        .any(|k| k.parent() == Some(p))
+            }
+            fn name(&self) -> &'static str {
+                "FakeFs"
+            }
         }
 
         let mut files = HashMap::new();
@@ -184,8 +215,13 @@ mod tests {
             allows_commercial_use = false
             allows_modifications = true
         "#;
-        files.insert(std::path::PathBuf::from("/proj/licenses/MIT.toml"), toml.to_string());
-        let fs = FsService::new(std::sync::Arc::new(FakeFs { files: Mutex::new(files) }));
+        files.insert(
+            std::path::PathBuf::from("/proj/licenses/MIT.toml"),
+            toml.to_string(),
+        );
+        let fs = FsService::new(std::sync::Arc::new(FakeFs {
+            files: Mutex::new(files),
+        }));
 
         let reg = LicenseRegistry::load(&fs, std::path::Path::new("/proj")).unwrap();
         let mit = reg.get("MIT").unwrap();
@@ -205,19 +241,46 @@ mod tests {
         }
         impl FsBackend for FakeFs {
             fn read_to_string(&self, p: &Path) -> Result<String, Report<FsError>> {
-                self.files.lock().unwrap().get(p).cloned().ok_or_else(|| Report::new(FsError))
+                self.files
+                    .lock()
+                    .unwrap()
+                    .get(p)
+                    .cloned()
+                    .ok_or_else(|| Report::new(FsError))
             }
             fn write(&self, p: &Path, c: &str) -> Result<(), Report<FsError>> {
-                self.files.lock().unwrap().insert(p.to_path_buf(), c.to_string());
+                self.files
+                    .lock()
+                    .unwrap()
+                    .insert(p.to_path_buf(), c.to_string());
                 Ok(())
             }
             fn list_dir(&self, p: &Path) -> Result<Vec<std::path::PathBuf>, Report<FsError>> {
-                let names = self.files.lock().unwrap().keys().filter(|k| k.parent() == Some(p)).cloned().collect();
+                let names = self
+                    .files
+                    .lock()
+                    .unwrap()
+                    .keys()
+                    .filter(|k| k.parent() == Some(p))
+                    .cloned()
+                    .collect();
                 Ok(names)
             }
-            fn walk(&self, _root: &Path) -> Result<Vec<std::path::PathBuf>, Report<FsError>> { Ok(Vec::new()) }
-            fn exists(&self, p: &Path) -> bool { self.files.lock().unwrap().contains_key(p) || self.files.lock().unwrap().keys().any(|k| k.parent() == Some(p)) }
-            fn name(&self) -> &'static str { "FakeFs" }
+            fn walk(&self, _root: &Path) -> Result<Vec<std::path::PathBuf>, Report<FsError>> {
+                Ok(Vec::new())
+            }
+            fn exists(&self, p: &Path) -> bool {
+                self.files.lock().unwrap().contains_key(p)
+                    || self
+                        .files
+                        .lock()
+                        .unwrap()
+                        .keys()
+                        .any(|k| k.parent() == Some(p))
+            }
+            fn name(&self) -> &'static str {
+                "FakeFs"
+            }
         }
 
         let mut files = HashMap::new();
@@ -235,8 +298,13 @@ mod tests {
             allows_commercial_use = true
             allows_modifications = false
         "#;
-        files.insert(std::path::PathBuf::from("/proj/licenses/LicenseRef-StudioEULA.toml"), toml.to_string());
-        let fs = FsService::new(std::sync::Arc::new(FakeFs { files: Mutex::new(files) }));
+        files.insert(
+            std::path::PathBuf::from("/proj/licenses/LicenseRef-StudioEULA.toml"),
+            toml.to_string(),
+        );
+        let fs = FsService::new(std::sync::Arc::new(FakeFs {
+            files: Mutex::new(files),
+        }));
 
         let reg = LicenseRegistry::load(&fs, std::path::Path::new("/proj")).unwrap();
         assert_eq!(reg.len(), 5, "4 embedded + 1 LicenseRef");
@@ -251,7 +319,6 @@ use error_stack::{Report, ResultExt};
 use wherror::Error;
 
 use crate::services::FsService;
-
 
 /// Error loading the license registry.
 #[derive(Debug, Error)]
@@ -324,7 +391,10 @@ fn merge_project_local(
 }
 
 /// List `*.toml` files in the local `licenses/` dir.
-fn list_local_tomls(fs: &FsService, dir: &Path) -> Result<Vec<std::path::PathBuf>, Report<RegistryError>> {
+fn list_local_tomls(
+    fs: &FsService,
+    dir: &Path,
+) -> Result<Vec<std::path::PathBuf>, Report<RegistryError>> {
     Ok(fs
         .list_dir(dir)
         .change_context(RegistryError)

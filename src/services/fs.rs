@@ -136,9 +136,9 @@ impl FsBackend for RealFs {
 
     fn write(&self, path: &Path, content: &str) -> Result<(), Report<FsError>> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).change_context(FsError).attach(
-                parent.display().to_string(),
-            )?;
+            std::fs::create_dir_all(parent)
+                .change_context(FsError)
+                .attach(parent.display().to_string())?;
         }
         std::fs::write(path, content)
             .change_context(FsError)

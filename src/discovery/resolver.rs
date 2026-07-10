@@ -78,7 +78,11 @@ fn find_nearest_manifest(fs: &FsService, asset: &Path, root: &Path) -> Option<Pa
 /// # Errors
 ///
 /// Returns an error if a sidecar or manifest exists but cannot be read or parsed.
-pub fn resolve(fs: &FsService, asset: &Path, root: &Path) -> Result<ResolvedAsset, Report<ResolveError>> {
+pub fn resolve(
+    fs: &FsService,
+    asset: &Path,
+    root: &Path,
+) -> Result<ResolvedAsset, Report<ResolveError>> {
     // 1. Sidecar.
     let sidecar = sidecar_path(asset);
     if fs.exists(&sidecar) {
@@ -252,12 +256,7 @@ source = "https://example.com"
             ("/proj/assets/sword.glb", ""),
             ("/proj/assets/manifest.toml", &fake_record_toml("CC0-1.0")),
         ]);
-        let r = resolve(
-            &fs,
-            Path::new("/proj/assets/sword.glb"),
-            Path::new("/proj"),
-        )
-        .unwrap();
+        let r = resolve(&fs, Path::new("/proj/assets/sword.glb"), Path::new("/proj")).unwrap();
         assert!(matches!(r.source, ResolutionSource::Manifest(_)));
         assert_eq!(r.record.unwrap().license, "CC0-1.0");
     }

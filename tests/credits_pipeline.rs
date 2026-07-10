@@ -33,7 +33,11 @@ fn generated(ctx: &CreditsCtx) -> String {
 }
 
 fn ctx<'a>(svc: &'a Services, cfg: &'a Config, root: &'a std::path::Path) -> CreditsCtx<'a> {
-    CreditsCtx { services: svc, config: cfg, root }
+    CreditsCtx {
+        services: svc,
+        config: cfg,
+        root,
+    }
 }
 
 // CC0 (attribution-free) assets are omitted from credits entirely.
@@ -57,7 +61,10 @@ source = "https://poly.pizza"
         content.contains("_No attribution-required assets found._"),
         "CC0 should produce empty credits; got:\n{content}"
     );
-    assert!(!content.contains("Rock"), "CC0 asset leaked into credits:\n{content}");
+    assert!(
+        !content.contains("Rock"),
+        "CC0 asset leaked into credits:\n{content}"
+    );
 }
 
 // CC-BY assets (attribution-required) produce entries grouped by author,
@@ -101,7 +108,10 @@ source = "https://example.com/c"
     // Alpha appears before Gamma (title sort) within Oliver's group.
     let alpha = content.find("**Alpha**").expect("Alpha missing");
     let gamma = content.find("**Gamma**").expect("Gamma missing");
-    assert!(alpha < gamma, "entries not sorted by title: Alpha should precede Gamma");
+    assert!(
+        alpha < gamma,
+        "entries not sorted by title: Alpha should precede Gamma"
+    );
 }
 
 // Modification notice appears only when requires_modification_notice + modified.
