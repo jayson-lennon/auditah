@@ -42,17 +42,14 @@ pub struct AddLicenseCmd {
 ///
 /// # Errors
 ///
-/// Returns an error if services fail, the name doesn't resolve (unknown or
-/// ambiguous SPDX id), a `--custom` name collides with a well-known id, or a
-/// target file already exists.
+/// Returns an error if services fail, the name doesn't resolve (unknown SPDX id),
+/// a `--custom` name collides with a well-known id, or a target file already exists.
 pub fn run(cmd: &AddLicenseCmd) -> Result<CommandStatus, Report<AppError>> {
     let services = Services::real(&cmd.root).change_context(AppError)?;
 
     if cmd.custom {
         // Refuse if the custom name collides with a well-known id (case-insensitive).
-        if let ResolveResult::Found(_) | ResolveResult::Ambiguous(_) =
-            well_known::resolve(&cmd.name)
-        {
+        if let ResolveResult::Found(_) = well_known::resolve(&cmd.name) {
             return Err(Report::new(AppError).attach(format!(
                 "{:?} is a known SPDX id; use `add-license {}` (without --custom) to source it from the corpus",
                 cmd.name, cmd.name
@@ -78,9 +75,6 @@ pub fn run(cmd: &AddLicenseCmd) -> Result<CommandStatus, Report<AppError>> {
             "unknown SPDX id {:?}; use `--custom` to create a custom (LicenseRef-) license",
             cmd.name
         ))),
-        ResolveResult::Ambiguous(cands) => Err(Report::new(AppError)
-            .attach(format!("ambiguous SPDX id {:?}", cmd.name))
-            .attach(format!("candidates: {}", cands.join(", ")))),
         ResolveResult::Found(canonical) => {
             // Always extract the canonical text.
             let text = well_known::extract_text(&canonical);

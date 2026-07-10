@@ -1,5 +1,7 @@
 # Well-Known SPDX Licenses (embedded zip) + default-fail grid correction
 
+> **DIVERGENCE NOTE (post-implementation):** `ResolveResult::Ambiguous` and the Vec-backed index were **removed** after implementation, following gap analysis. SPDX ids are case-insensitively unique by spec, so ambiguity is structurally unreachable — `Ambiguous` was dead code with a phantom synthetic test. `ResolveResult` is now `Found(String) | NotFound`; the index is `HashMap<String, String>` (normalized→canonical). AC7 ("ambiguous match errors and lists candidates") is ~~struck~~ removed as testing an unreachable state. Test case #7 is struck. All other ACs stand.
+
 ## Problem
 
 After the `LicenseRef`-collapse refactor, every license requires hand-authoring — even universal ones like MIT. Worse, the refactor regressed a critical contract: `add-license Foo` now writes a **permissive** grid (`LicenseTerms::permissive()` → `manual_review = false`, `allows_commercial_use = true`, `allows_redistribution = true`), so a user can scaffold a custom license that passes audit with all permissions granted and never engage with the grid. That violates the project's "fail by default" rule: a scaffolded-but-unfilled license must FAIL audit until a human reviews and acknowledges it.
@@ -24,7 +26,7 @@ Separately, there is no way to obtain canonical license text without manual hunt
 - `add-license --custom Foo` writes `LICENSES/LicenseRef-Foo.toml` with the `default_fail()` grid + prints a warning.
 - `add-license --custom MIT` errors ("use `add-license MIT` for well-known licenses").
 - `add-license NotReal` (no flag, zero matches) errors ("unknown SPDX id, use `--custom` for a custom license").
-- `add-license Foo` where `Foo` matches multiple entries case-insensitively → errors (ambiguous).
+- ~~`add-license Foo` where `Foo` matches multiple entries case-insensitively → errors (ambiguous).~~ **REMOVED**: SPDX ids are case-insensitively unique, so multiple matches are impossible. See divergence note at top.
 - Matching is **complete-string only**: `add-license M` does NOT match `MIT` (no partial/substring matching).
 - `LicenseRegistry::load` resolves authored well-known SPDX ids (MIT, etc.) from the embedded zip, with no `LICENSES/*.toml` present.
 - A hand-authored `LICENSES/MIT.toml` overrides the embedded well-known MIT grid.
@@ -275,7 +277,7 @@ For each `.toml` entry in the embedded zip: parse as `LicenseRegistryEntry`, ins
 | 4 | `add-license --custom Foo` | writes `LicenseRef-Foo.toml` `default_fail()` grid; prints warning |
 | 5 | `add-license --custom MIT` | errors (known id, must use non-custom path) |
 | 6 | `add-license NotReal` (no flag) | errors (zero matches) |
-| 7 | `add-license Foo` (synthetic ambiguous index) | errors (ambiguous), lists candidates |
+| ~~7~~ | ~~`add-license Foo` (synthetic ambiguous index) — errors (ambiguous), lists candidates~~ — **REMOVED**: SPDX ids are case-insensitively unique; ambiguity unreachable |
 | 8 | `LicenseTerms::default_fail()` | `manual_review=true`, all `allows_*`=false, `requires_*`=false, `derivatives=disallowed` |
 | 9 | `default_fail()` grid FAILs audit until acknowledged | FAIL `ManualReviewRequired` → ack → clean |
 | 10 | `LicenseRegistry::load` with empty `LICENSES/` | resolves authored well-known ids (MIT etc.) |
