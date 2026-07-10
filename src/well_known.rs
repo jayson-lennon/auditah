@@ -50,28 +50,21 @@ use std::sync::OnceLock;
 /// Outcome of resolving a user-typed name against the well-known corpus.
 ///
 /// Matching is case-insensitive and complete-string (no partials): `mit` resolves
-/// to `MIT`, but `M` does not match `MIT`. An exact lowercase collision across
-/// two distinct canonical ids yields [`ResolveResult::Ambiguous`].
-#[allow(dead_code)] // consumed by Phase 5
+/// to `MIT`, but `M` does not match `MIT`.
 #[derive(Debug)]
 pub(crate) enum ResolveResult {
     /// Exactly one canonical id matched.
     Found(String),
-    /// Multiple canonical ids share the same lowercase form (collides).
-    Ambiguous(Vec<String>),
     /// No match.
     NotFound,
 }
 
-/// Build the normalized index once: lowercase(canonical id) -> all canonical ids
-/// that lowercase to it. `Vec`-backed (not a single `String`) so an ambiguity is
-/// surfaced literally rather than silently collapsing to one winner.
-#[allow(dead_code)] // consumed by Phase 5
-fn index() -> &'static HashMap<String, Vec<String>> {
-    static IDX: OnceLock<HashMap<String, Vec<String>>> = OnceLock::new();
+/// Build the normalized index once: lowercase(canonical id) -> canonical id.
+pub(crate) fn index() -> &'static HashMap<String, String> {
+    static IDX: OnceLock<HashMap<String, String>> = OnceLock::new();
     IDX.get_or_init(|| {
         let mut zip = archive();
-        let mut map: HashMap<String, Vec<String>> = HashMap::new();
+        let mut map: HashMap<String, String> = HashMap::new();
         for i in 0..zip.len() {
             // Each .txt entry's stem is a canonical SPDX id.
             let Ok(entry) = zip.by_index(i) else { continue };
@@ -79,9 +72,7 @@ fn index() -> &'static HashMap<String, Vec<String>> {
             let Some(stem) = name.strip_suffix(".txt") else {
                 continue;
             };
-            map.entry(stem.to_lowercase())
-                .or_default()
-                .push(stem.to_string());
+            map.insert(stem.to_lowercase(), stem.to_string());
         }
         map
     })
@@ -89,15 +80,12 @@ fn index() -> &'static HashMap<String, Vec<String>> {
 
 /// Resolve a user-typed name to a canonical SPDX id (case-insensitive,
 /// complete-string).
-#[allow(dead_code)] // consumed by Phase 5
 pub(crate) fn resolve(name: &str) -> ResolveResult {
     match index().get(&name.to_lowercase()) {
+        Some(canonical) => ResolveResult::Found(canonical.clone()),
         None => ResolveResult::NotFound,
-        Some(cands) if cands.len() == 1 => ResolveResult::Found(cands[0].clone()),
-        Some(cands) => ResolveResult::Ambiguous(cands.clone()),
     }
 }
-
 /// Read the authored grid TOML for a canonical id, if present in the corpus.
 pub(crate) fn grid_for(canonical: &str) -> Option<String> {
     read_entry(&format!("{canonical}.toml"))
@@ -174,30 +162,6 @@ mod tests {
 
         // Then it is not found.
         assert!(matches!(r, ResolveResult::NotFound));
-    }
-
-    #[test]
-    fn resolve_surfaces_ambiguity_from_synthetic_index() {
-        // Given a synthetic index with two ids lowercasing to the same form.
-        let map: HashMap<String, Vec<String>> = [(
-            "x".to_string(),
-            vec!["X-1.0".to_string(), "X-2.0".to_string()],
-        )]
-        .into_iter()
-        .collect();
-
-        // When resolving against that index using the same match arms as resolve().
-        let r = match map.get("x") {
-            None => ResolveResult::NotFound,
-            Some(c) if c.len() == 1 => ResolveResult::Found(c[0].clone()),
-            Some(c) => ResolveResult::Ambiguous(c.clone()),
-        };
-
-        // Then it surfaces ambiguity with both candidates.
-        let ResolveResult::Ambiguous(cands) = r else {
-            panic!("expected Ambiguous, got {r:?}");
-        };
-        assert_eq!(cands, vec!["X-1.0", "X-2.0"]);
     }
 
     #[test]
