@@ -13,6 +13,7 @@ use derive_more::Debug;
 #[derive(Debug, Clone)]
 pub struct Services {
     pub fs: FsService,
+    pub registry: crate::registry::LicenseRegistry,
 }
 
 impl Services {
@@ -23,6 +24,11 @@ impl Services {
     pub fn real() -> Self {
         Self {
             fs: FsService::new(std::sync::Arc::new(RealFs::new())),
+            registry: crate::registry::LicenseRegistry::load(
+                &FsService::new(std::sync::Arc::new(RealFs::new())),
+                std::path::Path::new("."),
+            )
+            .expect("failed to load license registry"),
         }
     }
 }
@@ -88,6 +94,7 @@ mod tests {
     fn fs_service_round_trip_via_fake_backend() {
         let services = Services {
             fs: FsService::new(std::sync::Arc::new(FakeFs::empty())),
+            registry: crate::registry::LicenseRegistry::embedded_only(),
         };
         let path = Path::new("/tmp/fake.txt");
         services.fs.write(path, "hello").unwrap();
