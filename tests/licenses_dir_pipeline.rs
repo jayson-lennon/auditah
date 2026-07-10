@@ -138,9 +138,9 @@ allows_modifications = true
     let _ = outcome;
 }
 
-// CC0 assets (no attribution) still require LICENSES/CC0-1.0.txt.
+// CC0 assets fail audit without their LICENSES/CC0-1.0.txt.
 #[test]
-fn cc0_asset_also_requires_license_text() {
+fn cc0_asset_fails_when_license_text_missing() {
     // Given a CC0 asset with no LICENSES/ directory.
     let tree = temptree! {
         "rock.glb": "binary",
@@ -155,18 +155,37 @@ fn cc0_asset_also_requires_license_text() {
         root,
     };
 
-    // When running the audit before init-licenses.
+    // When running the audit.
     let report = run_audit(&ctx).unwrap();
 
-    // Then CC0 FAILs as MissingLicenseText (it also requires its text file).
+    // Then CC0 FAILs as MissingLicenseText.
     let codes = codes_for(&report, "rock.glb");
     assert!(
         codes.contains(&FindingCode::MissingLicenseText),
         "CC0 must also require its text file, got {codes:?}"
     );
+    let _ = Severity::Fail; // keep import used
+}
 
-    // When running init-licenses then re-auditing.
+// After init-licenses writes LICENSES/CC0-1.0.txt, the CC0 audit passes clean.
+#[test]
+fn cc0_audit_passes_clean_after_init_licenses() {
+    // Given a CC0 asset whose LICENSES/CC0-1.0.txt has been generated.
+    let tree = temptree! {
+        "rock.glb": "binary",
+        "rock.glb.attr.toml": "title = \"Rock\"\nauthor = \"A\"\nyear = 2020\nlicense = \"CC0-1.0\"\nsource = \"https://x\"\n",
+    };
+    let root = tree.path();
+    let svc = services();
+    let cfg = config();
+    let ctx = AuditCtx {
+        services: &svc,
+        config: &cfg,
+        root,
+    };
     init_licenses(&svc, root).unwrap();
+
+    // When running the audit.
     let report = run_audit(&ctx).unwrap();
 
     // Then the audit is clean.
@@ -175,5 +194,4 @@ fn cc0_asset_also_requires_license_text() {
         "expected clean after init-licenses, got: {:?}",
         report.findings
     );
-    let _ = Severity::Fail; // keep import used
 }
