@@ -1,0 +1,13 @@
+id = "ISC"
+name = "ISC License"
+url = "https://spdx.org/licenses/ISC.html"
+
+[terms]
+requires_attribution = true
+requires_license_notice = true
+requires_source_disclosure = false
+derivatives = "allowed"
+requires_modification_notice = false
+allows_commercial_use = true
+allows_redistribution = true
+manual_review = false

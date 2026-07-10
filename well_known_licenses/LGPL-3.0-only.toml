@@ -1,0 +1,17 @@
+id = "LGPL-3.0-only"
+name = "GNU Lesser General Public License v3.0 only"
+url = "https://spdx.org/licenses/LGPL-3.0-only.html"
+
+[terms]
+requires_attribution = false
+requires_license_notice = true
+requires_source_disclosure = true
+derivatives = "share-alike"
+requires_modification_notice = false
+allows_commercial_use = true
+allows_redistribution = true
+manual_review = false
+
+# LGPL's copyleft is conditional: modifications to the LGPL'd library itself
+# are share-alike, but merely linking does not relicense the consuming app.
+# The boolean grid models the strict case; use `manual_review` for nuance.

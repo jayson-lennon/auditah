@@ -48,6 +48,8 @@ pub(crate) fn read_entry(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::license::LicenseRegistryEntry;
+    use rstest::rstest;
 
     #[test]
     fn embedded_zip_has_expected_entry_count() {
@@ -84,5 +86,34 @@ mod tests {
 
         // Then it is absent.
         assert!(text.is_none());
+    }
+
+    #[rstest]
+    #[case::mit("MIT")]
+    #[case::isc("ISC")]
+    #[case::bsd2("BSD-2-Clause")]
+    #[case::bsd3("BSD-3-Clause")]
+    #[case::obsd("0BSD")]
+    #[case::apache("Apache-2.0")]
+    #[case::cc0("CC0-1.0")]
+    #[case::cc_by("CC-BY-4.0")]
+    #[case::cc_by_sa("CC-BY-SA-4.0")]
+    #[case::cc_by_nd("CC-BY-ND-4.0")]
+    #[case::ofl("OFL-1.1")]
+    #[case::gpl("GPL-3.0-only")]
+    #[case::lgpl("LGPL-3.0-only")]
+    #[case::mpl("MPL-2.0")]
+    fn authored_grid_round_trips_through_toml(#[case] id: &str) {
+        // Given the embedded corpus contains an authored grid for this id.
+        let toml_str = read_entry(&format!("{id}.toml"))
+            .unwrap_or_else(|| panic!("{id}.toml must be authored"));
+
+        // When parsing it as a registry entry.
+        let entry: LicenseRegistryEntry =
+            toml::from_str(&toml_str).unwrap_or_else(|e| panic!("{id}.toml failed to parse: {e}"));
+
+        // Then the entry's id matches and url is non-empty.
+        assert_eq!(entry.id, id);
+        assert!(!entry.url.is_empty());
     }
 }
