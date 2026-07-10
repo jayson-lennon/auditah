@@ -3,6 +3,7 @@
 //! Library crate: exposes core modules for integration tests and future
 //! embedding. The binary target (`src/main.rs`) consumes these via the CLI.
 
+pub mod add;
 pub mod audit;
 pub mod config;
 pub mod credits;
