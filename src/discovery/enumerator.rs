@@ -95,14 +95,16 @@ mod tests {
     use std::sync::Arc;
 
     fn fs_with(paths: &[&str]) -> FsService {
-        FsService::new(Arc::new(FakeFs::with_files(
-            paths.iter().map(|p| (*p, "")),
-        )))
+        FsService::new(Arc::new(FakeFs::with_files(paths.iter().map(|p| (*p, "")))))
     }
 
     #[test]
     fn exclude_matcher_matches_bare_filename_at_any_depth() {
+        // Given an ExcludeMatcher with a bare filename pattern.
         let m = ExcludeMatcher::new(&["Cargo.toml".to_string()]).unwrap();
+
+        // When checking paths at different depths.
+        // Then the filename matches at top-level and nested, and non-matches are excluded.
         assert!(m.is_excluded(Path::new("Cargo.toml")));
         assert!(m.is_excluded(Path::new("sub/Cargo.toml")));
         assert!(!m.is_excluded(Path::new("src/main.rs")));
@@ -110,6 +112,7 @@ mod tests {
 
     #[test]
     fn enumerate_filters_excluded_paths() {
+        // Given a fake filesystem with mixed assets and excluded files.
         let fs = fs_with(&[
             "/proj/assets/sword.glb",
             "/proj/Cargo.toml",
@@ -118,11 +121,15 @@ mod tests {
             "/proj/target/debug/auditah",
         ]);
         let excludes = ExcludeMatcher::new(&crate::discovery::all_excludes(&[])).unwrap();
+
+        // When enumerating with default excludes.
         let got = enumerate(&fs, Path::new("/proj"), &excludes).unwrap();
         let names: Vec<String> = got
             .iter()
             .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
             .collect();
+
+        // Then only the non-excluded asset remains.
         assert!(names.contains(&"sword.glb".to_string()));
         assert!(!names.contains(&"Cargo.toml".to_string()));
         assert!(!names.contains(&"sword.glb.attr.toml".to_string()));

@@ -97,24 +97,63 @@ mod tests {
             allows_modifications: true,
         }
     }
-
     #[test]
-    fn empty_overrides_inherits_base() {
+    fn empty_overrides_inherits_base_unchanged() {
+        // Given a CC-BY base and empty overrides.
         let base = cc_by_terms();
+
+        // When applying the empty overrides.
         let effective = effective_terms(&base, &Overrides::default());
+
+        // Then the effective terms equal the base.
         assert_eq!(effective, base);
     }
 
     #[test]
-    fn partial_override_flips_one_field() {
+    fn partial_override_flips_only_commercial_use() {
+        // Given a CC-BY base and an override flipping only commercial use.
         let base = cc_by_terms();
         let overrides = Overrides {
             allows_commercial_use: Some(false),
             ..Default::default()
         };
+
+        // When applying the override.
         let effective = effective_terms(&base, &overrides);
+
+        // Then only commercial use is flipped to false.
         assert!(!effective.allows_commercial_use);
+    }
+
+    #[test]
+    fn partial_override_preserves_attribution_requirement() {
+        // Given a CC-BY base and an override flipping only commercial use.
+        let base = cc_by_terms();
+        let overrides = Overrides {
+            allows_commercial_use: Some(false),
+            ..Default::default()
+        };
+
+        // When applying the override.
+        let effective = effective_terms(&base, &overrides);
+
+        // Then the attribution requirement is inherited from the base.
         assert!(effective.requires_attribution);
+    }
+
+    #[test]
+    fn partial_override_preserves_modifications_permission() {
+        // Given a CC-BY base and an override flipping only commercial use.
+        let base = cc_by_terms();
+        let overrides = Overrides {
+            allows_commercial_use: Some(false),
+            ..Default::default()
+        };
+
+        // When applying the override.
+        let effective = effective_terms(&base, &overrides);
+
+        // Then the modifications permission is inherited from the base.
         assert!(effective.allows_modifications);
     }
 }

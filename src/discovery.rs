@@ -56,7 +56,9 @@ mod tests {
 
     #[test]
     fn default_excludes_include_sidecar_and_manifest_and_registry() {
-        // Spot-check load-bearing entries.
+        // Given the DEFAULT_EXCLUDES set.
+        // When spot-checking load-bearing entries.
+        // Then sidecar, manifest, registry, and config are all excluded.
         assert!(DEFAULT_EXCLUDES.contains(&"**/*.attr.toml"));
         assert!(DEFAULT_EXCLUDES.contains(&"**/manifest.toml"));
         assert!(DEFAULT_EXCLUDES.contains(&"**/LICENSES/**"));
@@ -65,18 +67,25 @@ mod tests {
 
     #[test]
     fn all_excludes_merges_defaults_then_user() {
+        // Given user-supplied exclude patterns.
         let user = vec!["vendor/**".to_string(), "*.bak".to_string()];
+
+        // When merging with defaults.
         let merged = all_excludes(&user);
-        // Defaults present first.
+
+        // Then defaults come first and user patterns are appended after.
         assert!(merged.iter().any(|p| p == "**/.git/**"));
-        // User patterns appended after.
         assert_eq!(merged.last().unwrap(), "*.bak");
         assert!(merged.contains(&"vendor/**".to_string()));
     }
 
     #[test]
     fn all_excludes_empty_user_returns_only_defaults() {
+        // Given no user excludes.
+        // When merging with defaults.
         let merged = all_excludes(&[]);
+
+        // Then the result contains only the defaults.
         assert!(merged.len() == DEFAULT_EXCLUDES.len());
     }
 }

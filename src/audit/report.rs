@@ -122,7 +122,11 @@ mod tests {
 
     #[test]
     fn empty_report_has_no_failures() {
+        // Given a default (empty) report.
         let r = AuditReport::default();
+
+        // When inspecting the report.
+        // Then it has no failures and zero counts.
         assert!(!r.has_failures());
         assert_eq!(r.fail_count(), 0);
         assert_eq!(r.flag_count(), 0);
@@ -130,12 +134,16 @@ mod tests {
 
     #[test]
     fn flag_only_does_not_count_as_failure() {
+        // Given a report containing only a FLAG finding.
         let mut r = AuditReport::default();
         r.push(Finding::flag(
             FindingCode::ShareAlikeReview,
             asset(),
             "review",
         ));
+
+        // When inspecting the report.
+        // Then has_failures is false; flag_count is 1, fail_count is 0.
         assert!(!r.has_failures());
         assert_eq!(r.flag_count(), 1);
         assert_eq!(r.fail_count(), 0);
@@ -143,18 +151,23 @@ mod tests {
 
     #[test]
     fn fail_marks_has_failures_true() {
+        // Given a report containing a FAIL finding.
         let mut r = AuditReport::default();
         r.push(Finding::fail(
             FindingCode::UnlicensedAsset,
             asset(),
             "uncovered",
         ));
+
+        // When inspecting the report.
+        // Then has_failures is true and fail_count is 1.
         assert!(r.has_failures());
         assert_eq!(r.fail_count(), 1);
     }
 
     #[test]
     fn mixed_fail_and_flag_counted_separately() {
+        // Given a report with 2 fails and 1 flag.
         let mut r = AuditReport::default();
         r.push(Finding::fail(FindingCode::UnknownLicense, asset(), "x"));
         r.push(Finding::flag(
@@ -167,18 +180,25 @@ mod tests {
             asset(),
             "z",
         ));
+
+        // When inspecting the report.
+        // Then fail_count is 2, flag_count is 1, has_failures is true.
         assert_eq!(r.fail_count(), 2);
         assert_eq!(r.flag_count(), 1);
         assert!(r.has_failures());
     }
     #[test]
     fn missing_license_text_is_a_fail() {
+        // Given a report with a MissingLicenseText fail.
         let mut r = AuditReport::default();
         r.push(Finding::fail(
             FindingCode::MissingLicenseText,
             asset(),
             "no LICENSES/MIT.txt",
         ));
+
+        // When inspecting the report.
+        // Then has_failures is true and fail_count is 1.
         assert!(r.has_failures());
         assert_eq!(r.fail_count(), 1);
     }

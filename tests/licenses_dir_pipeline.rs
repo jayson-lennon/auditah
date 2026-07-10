@@ -9,12 +9,11 @@ use auditah::init_licenses::init_licenses;
 use temptree::temptree;
 
 mod common;
-use common::{codes_for, config, services};
 use auditah::registry::LicenseRegistry;
 use auditah::services::fs::{FsService, RealFs};
 use auditah::services::Services;
+use common::{codes_for, config, services};
 use std::sync::Arc;
-
 
 // A covered CC-BY asset with no LICENSES/ directory → FAIL MissingLicenseText.
 #[test]

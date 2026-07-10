@@ -153,38 +153,57 @@ mod tests {
 
     #[test]
     fn rendered_record_round_trips_through_toml_parse() {
+        // Given a minimal attribution record.
         let record = sample_record();
+
+        // When rendering to TOML and parsing back.
         let toml = render_record(&record);
         let parsed: AttributionRecord = toml::from_str(&toml).expect("must round-trip");
+
+        // Then the parsed record equals the original.
         assert_eq!(parsed, record);
     }
 
     #[test]
     fn rendered_record_with_overrides_round_trips() {
+        // Given a record with override fields set.
         let mut record = sample_record();
         record.overrides = Overrides {
             allows_commercial_use: Some(false),
             requires_attribution: Some(true),
             ..Default::default()
         };
+
+        // When rendering to TOML and parsing back.
         let toml = render_record(&record);
         let parsed: AttributionRecord = toml::from_str(&toml).expect("must round-trip");
+
+        // Then the parsed record equals the original including overrides.
         assert_eq!(parsed, record);
         assert_eq!(parsed.overrides.allows_commercial_use, Some(false));
     }
 
     #[test]
     fn rendered_record_with_package_round_trips() {
+        // Given a record with a package field.
         let mut record = sample_record();
         record.package = Some("Nature Pack".to_string());
+
+        // When rendering to TOML and parsing back.
         let toml = render_record(&record);
         let parsed: AttributionRecord = toml::from_str(&toml).expect("must round-trip");
+
+        // Then the package field round-trips.
         assert_eq!(parsed.package.as_deref(), Some("Nature Pack"));
     }
 
     #[test]
     fn sidecar_path_appends_attr_toml() {
+        // Given an asset path.
+        // When computing its sidecar path.
         let p = sidecar_path(Path::new("/proj/sword.glb"));
+
+        // Then the sidecar path is the asset path with .attr.toml appended.
         assert_eq!(p, PathBuf::from("/proj/sword.glb.attr.toml"));
     }
 }

@@ -62,18 +62,27 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
-    fn services_real_constructs() {
+    fn services_real_constructs_without_panic() {
+        // Given the real Services constructor.
+        // When constructing real services.
         let _services = Services::real();
+
+        // Then construction succeeds (no panic).
     }
 
     #[test]
-    fn fs_service_round_trip_via_fake_backend() {
+    fn fs_service_round_trips_write_read_exists_via_fake_backend() {
+        // Given a Services with a FakeFs backend.
         let services = Services {
             fs: FsService::new(Arc::new(FakeFs::default())),
             registry: LicenseRegistry::embedded_only(),
         };
         let path = Path::new("/tmp/fake.txt");
+
+        // When writing then reading via the FsService.
         services.fs.write(path, "hello").unwrap();
+
+        // Then exists/read reflect the written content.
         assert!(services.fs.exists(path));
         assert_eq!(services.fs.read_to_string(path).unwrap(), "hello");
     }

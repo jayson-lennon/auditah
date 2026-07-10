@@ -76,8 +76,12 @@ mod tests {
     use crate::model::terms::{effective_terms, Overrides};
 
     #[test]
-    fn embedded_registry_loads_all_four() {
+    fn embedded_registry_contains_all_four_expected_ids() {
+        // Given the embedded license registry.
         let map = embedded_entries();
+
+        // When checking the registry size and ids.
+        // Then all four ids are present.
         assert_eq!(map.len(), 4, "expected CC0-1.0, CC-BY-3.0, MIT, OFL-1.1");
         for id in ["CC0-1.0", "CC-BY-3.0", "MIT", "OFL-1.1"] {
             assert!(map.contains_key(id), "missing embedded license {id}");
@@ -85,9 +89,13 @@ mod tests {
     }
 
     #[test]
-    fn embedded_text_is_populated() {
+    fn embedded_mit_text_is_nonempty_and_canonical() {
+        // Given the embedded MIT license entry.
         let map = embedded_entries();
         let mit = &map["MIT"];
+
+        // When inspecting its text.
+        // Then the text is populated and contains the canonical permission phrase.
         assert!(!mit.text.is_empty(), "MIT text should be filled from .txt");
         assert!(mit.text.contains("Permission is hereby granted"));
     }
@@ -101,10 +109,15 @@ mod tests {
     #[case::mit("MIT")]
     #[case::ofl("OFL-1.1")]
     fn registry_lookup_returns_entry_for_known_id(#[case] id: &str) {
+        // Given the embedded registry.
         let reg = LicenseRegistry::embedded_only();
+
+        // When looking up a known id.
         let entry = reg
             .get(id)
             .unwrap_or_else(|| panic!("{id} should be in registry"));
+
+        // Then the entry's id matches.
         assert_eq!(entry.id, id);
     }
 
@@ -114,14 +127,33 @@ mod tests {
     #[case::empty("")]
     #[case::ref_not_embedded("LicenseRef-Custom")]
     fn registry_lookup_returns_none_for_unknown_id(#[case] id: &str) {
+        // Given the embedded registry.
         let reg = LicenseRegistry::embedded_only();
+
+        // When looking up an unknown id.
+        // Then lookup returns None.
         assert!(reg.get(id).is_none(), "{id:?} should NOT resolve");
     }
 
+    // --- split: per-license attribution requirement ---
+
     #[test]
-    fn cc_by_requires_attribution_but_cc0_does_not() {
+    fn cc_by_requires_attribution() {
+        // Given the embedded registry.
         let reg = LicenseRegistry::embedded_only();
+
+        // When inspecting CC-BY-3.0 terms.
+        // Then attribution is required.
         assert!(reg.get("CC-BY-3.0").unwrap().terms.requires_attribution);
+    }
+
+    #[test]
+    fn cc0_does_not_require_attribution() {
+        // Given the embedded registry.
+        let reg = LicenseRegistry::embedded_only();
+
+        // When inspecting CC0-1.0 terms.
+        // Then attribution is not required.
         assert!(!reg.get("CC0-1.0").unwrap().terms.requires_attribution);
     }
 
@@ -137,9 +169,14 @@ mod tests {
         #[case] expect_attr: bool,
         #[case] expect_comm: bool,
     ) {
+        // Given the registry entry for `license_id`.
         let reg = LicenseRegistry::embedded_only();
         let base = &reg.get(license_id).unwrap().terms;
+
+        // When applying the overrides.
         let eff = effective_terms(base, &overrides);
+
+        // Then the effective terms reflect the override (or lack thereof).
         assert_eq!(eff.requires_attribution, expect_attr);
         assert_eq!(eff.allows_commercial_use, expect_comm);
     }
@@ -148,10 +185,10 @@ mod tests {
 
     #[test]
     fn project_local_license_overrides_embedded_by_id() {
+        // Given a project-local MIT.toml that overrides name + commercial use.
         use crate::services::fs::FsService;
         use crate::test_support::FakeFs;
         use std::path::Path;
-
         let toml = r#"
             id = "MIT"
             name = "MIT (overridden)"
@@ -166,11 +203,15 @@ mod tests {
             allows_commercial_use = false
             allows_modifications = true
         "#;
-        let fs = FsService::new(Arc::new(
-            FakeFs::with_files([("/proj/licenses/MIT.toml", toml)]),
-        ));
+        let fs = FsService::new(Arc::new(FakeFs::with_files([(
+            "/proj/licenses/MIT.toml",
+            toml,
+        )])));
 
+        // When loading the merged registry.
         let reg = LicenseRegistry::load(&fs, Path::new("/proj")).unwrap();
+
+        // Then the project-local entry overrides the embedded one by id.
         let mit = reg.get("MIT").unwrap();
         assert_eq!(mit.name, "MIT (overridden)");
         assert!(!mit.terms.allows_commercial_use);
@@ -178,10 +219,10 @@ mod tests {
 
     #[test]
     fn project_local_licenseref_added_to_registry() {
+        // Given a project-local LicenseRef entry not in the embedded set.
         use crate::services::fs::FsService;
         use crate::test_support::FakeFs;
         use std::path::Path;
-
         let toml = r#"
             id = "LicenseRef-StudioEULA"
             name = "Studio Custom EULA"
@@ -196,11 +237,15 @@ mod tests {
             allows_commercial_use = true
             allows_modifications = false
         "#;
-        let fs = FsService::new(Arc::new(
-            FakeFs::with_files([("/proj/licenses/LicenseRef-StudioEULA.toml", toml)]),
-        ));
+        let fs = FsService::new(Arc::new(FakeFs::with_files([(
+            "/proj/licenses/LicenseRef-StudioEULA.toml",
+            toml,
+        )])));
 
+        // When loading the merged registry.
         let reg = LicenseRegistry::load(&fs, Path::new("/proj")).unwrap();
+
+        // Then the LicenseRef is added (4 embedded + 1) and its terms are honored.
         assert_eq!(reg.len(), 5, "4 embedded + 1 LicenseRef");
         let custom = reg.get("LicenseRef-StudioEULA").unwrap();
         assert!(!custom.terms.allows_modifications);

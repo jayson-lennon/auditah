@@ -9,7 +9,6 @@ use temptree::temptree;
 mod common;
 use common::{default_excludes, real_fs};
 
-
 #[test]
 fn sidecar_wins_over_manifest_in_same_dir() {
     let tree = temptree! {
