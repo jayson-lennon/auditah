@@ -355,8 +355,17 @@ fn read_and_parse_local(
         .change_context(RegistryError)
         .attach("failed to read project-local license file".to_string())
         .attach(path.display().to_string())?;
-    toml::from_str(&content)
+    let entry: LicenseRegistryEntry = toml::from_str(&content)
         .change_context(RegistryError)
         .attach("failed to parse project-local license TOML".to_string())
-        .attach(path.display().to_string())
+        .attach(path.display().to_string())?;
+    // Custom LicenseRef-* entries must carry their own full license text;
+    // there is no embedded fallback for them.
+    if entry.id.starts_with("LicenseRef-") && entry.text.trim().is_empty() {
+        return Err(Report::from(RegistryError)
+            .attach("custom LicenseRef-* license has empty `text`".to_string())
+            .attach(entry.id.clone())
+            .attach(path.display().to_string()));
+    }
+    Ok(entry)
 }
