@@ -24,6 +24,17 @@ fmt-check:
 fmt-fix:
     cargo fmt
 
-# Run clippy lints
-lint:
+# Run the license compliance audit against the current directory.
+audit:
+    cargo run -- audit
+
+# Generate CREDITS.md from attribution sidecars/manifests.
+credits:
+    cargo run -- credits
+
+# Alias: license compliance lint.
+lint: audit
+
+# Run clippy lints.
+clippy:
     cargo clippy --all-targets -- -D warnings

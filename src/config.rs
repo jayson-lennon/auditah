@@ -12,7 +12,7 @@ use crate::services::FsService;
 pub struct ConfigError;
 
 /// Project root configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     /// Whether the consuming project is commercial. When true, assets whose
     /// effective terms have `allows_commercial_use = false` FAIL the audit.
@@ -22,15 +22,6 @@ pub struct Config {
     /// the built-in default excludes). Matched against paths relative to root.
     #[serde(default)]
     pub exclude: Vec<String>,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            commercial_project: false,
-            exclude: Vec::new(),
-        }
-    }
 }
 
 /// File name of the project config at the project root.

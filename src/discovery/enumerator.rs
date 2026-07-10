@@ -29,7 +29,9 @@ impl ExcludeMatcher {
     pub fn new(patterns: &[String]) -> Result<Self, Report<EnumerateError>> {
         let mut builder = GlobSetBuilder::new();
         for p in patterns {
-            let glob = Glob::new(p).change_context(EnumerateError).attach(p.clone())?;
+            let glob = Glob::new(p)
+                .change_context(EnumerateError)
+                .attach(p.clone())?;
             builder.add(glob);
         }
         let set = builder
@@ -76,11 +78,7 @@ pub fn enumerate(
 
 /// Pure filter: drop excluded paths. Sidecars and manifests are already covered
 /// by the default exclude set, so no special-casing here.
-fn filter_candidates(
-    all: &[PathBuf],
-    root: &Path,
-    excludes: &ExcludeMatcher,
-) -> Vec<PathBuf> {
+fn filter_candidates(all: &[PathBuf], root: &Path, excludes: &ExcludeMatcher) -> Vec<PathBuf> {
     all.iter()
         .filter(|p| {
             let rel = p.strip_prefix(root).unwrap_or(p);
@@ -159,8 +157,7 @@ mod tests {
             "/proj/assets/manifest.toml",
             "/proj/target/debug/auditah",
         ]);
-        let excludes =
-            ExcludeMatcher::new(&crate::discovery::all_excludes(&[])).unwrap();
+        let excludes = ExcludeMatcher::new(&crate::discovery::all_excludes(&[])).unwrap();
         let got = enumerate(&fs, Path::new("/proj"), &excludes).unwrap();
         let names: Vec<String> = got
             .iter()

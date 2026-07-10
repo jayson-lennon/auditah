@@ -91,16 +91,15 @@ fn check_orphan_sidecars(all_files: &[PathBuf], ctx: &AuditCtx, report: &mut Aud
 }
 
 /// Coverage: an asset with no resolvable config is unlicensed.
-fn check_coverage(
-    asset: &Path,
-    source: &ResolutionSource,
-    report: &mut AuditReport,
-) {
+fn check_coverage(asset: &Path, source: &ResolutionSource, report: &mut AuditReport) {
     if matches!(source, ResolutionSource::None) {
         report.push(Finding::fail(
             FindingCode::UnlicensedAsset,
             asset.to_path_buf(),
-            format!("unlicensed asset: no sidecar or manifest covers {}", asset.display()),
+            format!(
+                "unlicensed asset: no sidecar or manifest covers {}",
+                asset.display()
+            ),
         ));
     }
 }

@@ -6,7 +6,9 @@
 mod cli;
 use clap::{Parser, Subcommand};
 
-use cli::{add_cmd::AddCmd, audit_cmd::AuditCmd, credits_cmd::CreditsCmd, init_pack_cmd::InitPackCmd};
+use cli::{
+    add_cmd::AddCmd, audit_cmd::AuditCmd, credits_cmd::CreditsCmd, init_pack_cmd::InitPackCmd,
+};
 
 /// Top-level CLI.
 #[derive(Debug, Parser)]

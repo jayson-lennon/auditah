@@ -48,7 +48,9 @@ pub struct CreditsCtx<'a> {
 /// # Errors
 ///
 /// Returns `CreditsError` if enumeration or resolution fails.
-pub(crate) fn collect_credits(ctx: &CreditsCtx) -> Result<BTreeMap<String, Vec<CreditEntry>>, Report<CreditsError>> {
+pub(crate) fn collect_credits(
+    ctx: &CreditsCtx,
+) -> Result<BTreeMap<String, Vec<CreditEntry>>, Report<CreditsError>> {
     let excludes = build_excludes(ctx);
     let assets = enumerate(&ctx.services.fs, ctx.root, &excludes)
         .change_context(CreditsError)
@@ -77,8 +79,7 @@ pub(crate) fn collect_credits(ctx: &CreditsCtx) -> Result<BTreeMap<String, Vec<C
 /// Build the exclude matcher from default + user globs.
 fn build_excludes(ctx: &CreditsCtx) -> ExcludeMatcher {
     let patterns = crate::discovery::all_excludes(&ctx.config.exclude);
-    ExcludeMatcher::new(&patterns)
-        .expect("exclude patterns must compile")
+    ExcludeMatcher::new(&patterns).expect("exclude patterns must compile")
 }
 
 /// Decide whether an asset needs a credits entry, and build it if so.
@@ -149,10 +150,7 @@ pub(crate) fn render_credits(by_author: &BTreeMap<String, Vec<CreditEntry>>) -> 
 /// # Errors
 ///
 /// Returns `CreditsError` on enumeration, resolution, or write failure.
-pub fn generate_credits(
-    ctx: &CreditsCtx,
-    output_path: &Path,
-) -> Result<(), Report<CreditsError>> {
+pub fn generate_credits(ctx: &CreditsCtx, output_path: &Path) -> Result<(), Report<CreditsError>> {
     let by_author = collect_credits(ctx)?;
     let markdown = render_credits(&by_author);
     ctx.services

@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use auditah::audit::{run_audit, AuditCtx};
 use auditah::audit::report::{FindingCode, Severity};
+use auditah::audit::{run_audit, AuditCtx};
 use auditah::config::Config;
 use auditah::registry::LicenseRegistry;
 use auditah::services::fs::{FsService, RealFs};
@@ -235,9 +235,10 @@ requires_share_alike = true
     };
     let report = run_audit(&ctx).unwrap();
     // No blocking failures for this asset.
-    let viral_fail = report.findings.iter().any(|f| {
-        f.asset.to_string_lossy().contains("viral") && f.severity == Severity::Fail
-    });
+    let viral_fail = report
+        .findings
+        .iter()
+        .any(|f| f.asset.to_string_lossy().contains("viral") && f.severity == Severity::Fail);
     assert!(!viral_fail, "share-alike must FLAG, not FAIL");
     let codes = codes_for(&report, "viral");
     assert!(

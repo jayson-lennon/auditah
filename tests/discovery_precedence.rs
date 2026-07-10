@@ -6,9 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use auditah::discovery::enumerator::{enumerate, ExcludeMatcher};
-use auditah::discovery::resolver::{
-    resolve, ResolutionSource, MANIFEST_FILENAME, SIDECAR_SUFFIX,
-};
+use auditah::discovery::resolver::{resolve, ResolutionSource, MANIFEST_FILENAME, SIDECAR_SUFFIX};
 use auditah::services::fs::{FsService, RealFs};
 use temptree::temptree;
 
@@ -50,7 +48,10 @@ source = "https://example.com/pack"
     let fs = real_fs();
     let asset = root.join("sword.glb");
     let r = resolve(&fs, &asset, root).unwrap();
-    assert!(matches!(r.source, ResolutionSource::Sidecar(_)), "sidecar should win");
+    assert!(
+        matches!(r.source, ResolutionSource::Sidecar(_)),
+        "sidecar should win"
+    );
     assert_eq!(r.record.unwrap().license, "MIT");
 }
 
@@ -80,7 +81,11 @@ source = "https://example.com/child"
     let asset = root.join("sub").join("rock.glb");
     let r = resolve(&fs, &asset, root).unwrap();
     assert!(matches!(r.source, ResolutionSource::Manifest(_)));
-    assert_eq!(r.record.unwrap().license, "MIT", "subdir manifest should win");
+    assert_eq!(
+        r.record.unwrap().license,
+        "MIT",
+        "subdir manifest should win"
+    );
 }
 
 #[test]
@@ -186,7 +191,11 @@ source = "https://poly.pizza/m/download/Gunny-Sack"
     // Re-enumerate to confirm the spaced filename survives the walk + exclude filter.
     let got = enumerate(&fs, root, &default_excludes()).unwrap();
     assert_eq!(got.len(), 1);
-    assert!(got[0].file_name().unwrap().to_string_lossy().contains("Gunny Sack"));
+    assert!(got[0]
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .contains("Gunny Sack"));
     let _ = record_toml; // silence unused warning for helper
     let _ = Path::new("x");
 }
