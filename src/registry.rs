@@ -17,6 +17,7 @@ use wherror::Error;
 use crate::model::license::LicenseRegistryEntry;
 use crate::model::terms::LicenseTerms;
 use crate::services::FsService;
+use crate::well_known;
 
 /// Error loading the license registry.
 #[derive(Debug, Error)]
@@ -39,6 +40,7 @@ impl LicenseRegistry {
     /// Returns `RegistryError` if a `LICENSES/*.toml` fails to parse or read.
     pub fn load(fs: &FsService, project_root: &Path) -> Result<Self, Report<RegistryError>> {
         let mut entries = HashMap::new();
+        seed_well_known(&mut entries);
         merge_project_local(fs, project_root, &mut entries)?;
         Ok(Self { entries })
     }
@@ -80,6 +82,22 @@ impl LicenseRegistry {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+}
+
+/// Seed the registry with authored well-known SPDX grids parsed from the
+/// embedded corpus (`well_known_licenses/*.toml` zipped into the binary).
+/// Project-local `LICENSES/<id>.toml` files override these via the subsequent
+/// `merge_project_local`.
+fn seed_well_known(entries: &mut HashMap<String, LicenseRegistryEntry>) {
+    for canonical in well_known::authored_grid_ids() {
+        let Some(toml_str) = well_known::grid_for(&canonical) else {
+            continue;
+        };
+        let Ok(entry): Result<LicenseRegistryEntry, _> = toml::from_str(&toml_str) else {
+            continue;
+        };
+        entries.insert(entry.id.clone(), entry);
     }
 }
 
@@ -306,7 +324,10 @@ mod tests {
             .license(LicenseSpec::new("LicenseRef-Foo"))
             .commit(tmp.path(), &fs())
             .expect("commit");
-        assert_eq!(reg.len(), 1, "commit should write + load one entry");
+        assert!(
+            reg.get("LicenseRef-Foo").is_some(),
+            "commit must write + load the LicenseRef-Foo entry"
+        );
 
         // When re-loading from the same root (simulating app startup).
         let reloaded = LicenseRegistry::load(&fs(), tmp.path()).expect("load");
@@ -326,15 +347,23 @@ mod tests {
     }
 
     #[test]
-    fn load_missing_licenses_dir_yields_empty_registry() {
+    fn load_missing_licenses_dir_yields_only_well_known_grids() {
         // Given a temp root with no LICENSES/ dir.
         let tmp = tmp_root();
 
         // When loading.
         let reg = LicenseRegistry::load(&fs(), tmp.path()).expect("load");
 
-        // Then the registry is empty (not an error).
-        assert!(reg.is_empty());
+        // Then the registry is non-empty (seeded with authored well-known grids),
+        // and contains no LicenseRef- (those must come from the project).
+        assert!(
+            !reg.is_empty(),
+            "load must seed authored well-known grids even with no LICENSES/ dir"
+        );
+        assert!(
+            reg.entries().all(|e| !e.id.starts_with("LicenseRef-")),
+            "no LicenseRef- entries without project-local LICENSES/"
+        );
     }
 
     #[test]
@@ -381,5 +410,55 @@ mod tests {
 
         // Then loading fails — the dropped `text` field is rejected.
         assert!(result.is_err());
+    }
+    // --- well-known seeding (Phase 6) ---
+
+    #[test]
+    fn load_seeds_authored_well_known_grids_from_embedded_corpus() {
+        // Given a temp root with no LICENSES/ dir.
+        let tmp = tmp_root();
+
+        // When loading.
+        let reg = LicenseRegistry::load(&fs(), tmp.path()).expect("load");
+
+        // Then authored well-known SPDX ids resolve (no project-local files).
+        assert!(
+            reg.get("MIT").is_some(),
+            "MIT grid must be seeded from the embedded corpus"
+        );
+        assert!(
+            reg.get("CC-BY-4.0").is_some(),
+            "CC-BY-4.0 grid must be seeded"
+        );
+    }
+
+    #[test]
+    fn project_local_grid_overrides_seeded_well_known_grid() {
+        // Given a project-local MIT.toml overriding the embedded grid.
+        let tmp = tmp_root();
+        let dir = tmp.path().join("LICENSES");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("MIT.toml"),
+            "id = \"MIT\"\nname = \"overridden\"\nurl = \"https://override\"\n".to_string()
+                + "[terms]\n"
+                + "requires_attribution = false\n"
+                + "requires_license_notice = false\n"
+                + "requires_source_disclosure = false\n"
+                + "derivatives = \"disallowed\"\n"
+                + "requires_modification_notice = false\n"
+                + "allows_commercial_use = false\n"
+                + "allows_redistribution = false\n"
+                + "manual_review = false\n",
+        )
+        .unwrap();
+
+        // When loading.
+        let reg = LicenseRegistry::load(&fs(), tmp.path()).expect("load");
+
+        // Then the project-local MIT entry wins (name overridden, derivatives set by it).
+        let entry = reg.get("MIT").expect("MIT resolves");
+        assert_eq!(entry.name, "overridden");
+        assert_eq!(entry.terms.derivatives, Derivatives::Disallowed);
     }
 }
