@@ -12,31 +12,69 @@ use std::sync::Arc;
 use auditah::audit::report::{AuditReport, FindingCode};
 use auditah::config::Config;
 use auditah::model::attribution::AttributionRecord;
-use auditah::model::terms::Overrides;
-use auditah::registry::LicenseRegistry;
+use auditah::model::terms::{Derivatives, LicenseTerms, Overrides};
+use auditah::registry::{LicenseRegistry, LicenseSpec};
 use auditah::services::fs::{FsService, RealFs};
 use auditah::services::Services;
 
-/// Build a real-filesystem [`Services`] with the embedded license registry
-/// (no project-local licenses). Used by audit/credits/add pipeline tests.
-#[must_use]
-pub fn services() -> Services {
+/// Build a real-filesystem [`Services`] with the given registry.
+///
+/// Each test declares the licenses it expects to fulfill it via the
+/// [`LicenseRegistryBuilder`] (see [`services_with`] / [`services_empty`]).
+fn services_from(registry: LicenseRegistry) -> Services {
     Services {
         fs: FsService::new(Arc::new(RealFs::new())),
-        registry: LicenseRegistry::embedded_only(),
+        registry,
     }
 }
 
-/// Seed `LICENSES/<id>.txt` for every embedded license so audit's
-/// `MissingLicenseText` check passes in pass-clean scenarios.
-pub fn seed_licenses(root: &std::path::Path) {
-    let reg = LicenseRegistry::embedded_only();
+/// Build [`Services`] with a registry constructed from the given specs.
+///
+/// Tests that need a resolvable license add it here:
+/// `services_with(&root, [LicenseSpec::new("LicenseRef-Asset").text("...")])`.
+/// Use [`services_with_text`] when the audit text-check must pass.
+#[must_use]
+pub fn services_with(specs: impl IntoIterator<Item = LicenseSpec>) -> Services {
+    let mut builder = LicenseRegistry::builder();
+    for spec in specs {
+        builder = builder.license(spec);
+    }
+    services_from(builder.build())
+}
+
+/// Build [`Services`] with an empty registry (no licenses resolvable).
+///
+/// Audit tests that exercise `UnknownLicense` start here.
+#[must_use]
+pub fn services_empty() -> Services {
+    services_from(LicenseRegistry::builder().build())
+}
+
+/// Write `LICENSES/<id>.txt` for each given id under `root`.
+///
+/// The registry builder handles the `.toml` grids; this handles the legal
+/// text files that audit's `MissingLicenseText` check gates on. Call after
+/// building the registry when a test needs the text-check to pass.
+pub fn seed_license_text(root: &std::path::Path, ids: &[&str]) {
     let dir = root.join("LICENSES");
     std::fs::create_dir_all(&dir).expect("create LICENSES dir");
-    for entry in reg.entries() {
-        std::fs::write(dir.join(format!("{}.txt", entry.id)), &entry.text)
-            .expect("write LICENSES file");
+    for id in ids {
+        std::fs::write(dir.join(format!("{id}.txt")), "license body").expect("write LICENSES file");
     }
+}
+
+/// Seed a complete on-disk permissive license under `root`: both the grid
+/// (`LICENSES/<id>.toml`) and the text (`LICENSES/<id>.txt`).
+///
+/// CLI/run tests that need a real `LicenseRegistry::load` to succeed use this.
+pub fn seed_license(root: &std::path::Path, id: &str) {
+    let dir = root.join("LICENSES");
+    std::fs::create_dir_all(&dir).expect("create LICENSES dir");
+    LicenseRegistry::builder()
+        .license(LicenseSpec::new(id))
+        .commit(root, &real_fs())
+        .expect("seed license commit");
+    seed_license_text(root, &[id]);
 }
 
 /// Non-commercial project config with no exclude globs.
@@ -97,6 +135,36 @@ pub fn record(license: &str) -> AttributionRecord {
         package: None,
         overrides: Overrides::default(),
     }
+}
+
+// --- License term fixtures (archetypes from the terms-redesign dialectic) ---
+
+/// The "use however you want" baseline: all permissions granted, no obligations,
+/// derivatives allowed, no manual review. The starting point most tests restrict from.
+#[must_use]
+pub fn permissive_terms() -> LicenseTerms {
+    LicenseTerms::permissive()
+}
+
+/// Share-alike license (OFL, GPL, CC-BY-SA): derivatives allowed only under the
+/// same license. Otherwise permissive.
+#[must_use]
+pub fn share_alike_terms() -> LicenseTerms {
+    LicenseTerms::permissive().with_derivatives(Derivatives::ShareAlike)
+}
+
+/// No-derivatives license (CC-BY-ND): derivatives forbidden. Otherwise permissive.
+#[must_use]
+pub fn no_derivatives_terms() -> LicenseTerms {
+    LicenseTerms::permissive().with_derivatives(Derivatives::Disallowed)
+}
+
+/// Non-commercial license (CC-BY-NC): commercial use forbidden. Otherwise permissive.
+#[must_use]
+pub fn non_commercial_terms() -> LicenseTerms {
+    let mut t = LicenseTerms::permissive();
+    t.allows_commercial_use = false;
+    t
 }
 
 use auditah::discovery::enumerator::ExcludeMatcher;

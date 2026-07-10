@@ -18,7 +18,6 @@ use crate::model::license::LicenseRegistryEntry;
 use crate::model::terms::LicenseTerms;
 use crate::services::FsService;
 
-
 /// Error loading the license registry.
 #[derive(Debug, Error)]
 #[error(debug)]
@@ -227,5 +226,160 @@ impl LicenseSpec {
     /// Borrow the entry. (Builder's `.commit()` serializes without consuming.)
     fn entry(&self) -> &LicenseRegistryEntry {
         &self.entry
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::terms::Derivatives;
+    use crate::services::fs::{FsService, RealFs};
+    use std::sync::Arc;
+
+    fn fs() -> FsService {
+        FsService::new(Arc::new(RealFs::new()))
+    }
+
+    fn tmp_root() -> tempfile::TempDir {
+        tempfile::tempdir().expect("temp dir")
+    }
+
+    // --- Registry construction ---
+
+    #[test]
+    fn empty_registry_has_no_entries() {
+        // Given an empty registry.
+        let reg = LicenseRegistry::empty();
+
+        // When checking its size.
+        // Then it has zero entries.
+        assert_eq!(reg.len(), 0);
+        assert!(reg.is_empty());
+    }
+
+    #[test]
+    fn builder_with_no_specs_is_empty() {
+        // Given a builder with no specs.
+        // When building.
+        let reg = LicenseRegistry::builder().build();
+
+        // Then the registry is empty.
+        assert!(reg.is_empty());
+    }
+
+    #[test]
+    fn builder_resolves_built_license() {
+        // Given a builder with one LicenseRef-Asset spec.
+        // When building.
+        let reg = LicenseRegistry::builder()
+            .license(LicenseSpec::new("LicenseRef-Asset"))
+            .build();
+
+        // Then the license resolves by id.
+        assert!(reg.get("LicenseRef-Asset").is_some());
+        assert_eq!(reg.len(), 1);
+    }
+
+    #[test]
+    fn builder_terms_override_takes_effect() {
+        // Given a builder with a share-alike spec.
+        let terms = LicenseTerms::permissive().with_derivatives(Derivatives::ShareAlike);
+
+        // When building.
+        let reg = LicenseRegistry::builder()
+            .license(LicenseSpec::new("LicenseRef-Gpl").terms(terms))
+            .build();
+
+        // Then the built entry carries the share-alike terms.
+        let entry = reg.get("LicenseRef-Gpl").expect("entry");
+        assert_eq!(entry.terms.derivatives, Derivatives::ShareAlike);
+    }
+
+    // --- Registry load from disk ---
+
+    #[test]
+    fn load_reads_uppercase_licenses_dir() {
+        // Given a temp root with LICENSES/LicenseRef-Foo.toml.
+        let tmp = tmp_root();
+        let reg = LicenseRegistry::builder()
+            .license(LicenseSpec::new("LicenseRef-Foo"))
+            .commit(tmp.path(), &fs())
+            .expect("commit");
+        assert_eq!(reg.len(), 1, "commit should write + load one entry");
+
+        // When re-loading from the same root (simulating app startup).
+        let reloaded = LicenseRegistry::load(&fs(), tmp.path()).expect("load");
+
+        // Then the LicenseRef-Foo entry resolves.
+        assert!(
+            reloaded.get("LicenseRef-Foo").is_some(),
+            "registry must read from uppercase LICENSES/"
+        );
+        assert!(
+            tmp.path()
+                .join("LICENSES")
+                .join("LicenseRef-Foo.toml")
+                .exists(),
+            "grid must be at uppercase LICENSES/"
+        );
+    }
+
+    #[test]
+    fn load_missing_licenses_dir_yields_empty_registry() {
+        // Given a temp root with no LICENSES/ dir.
+        let tmp = tmp_root();
+
+        // When loading.
+        let reg = LicenseRegistry::load(&fs(), tmp.path()).expect("load");
+
+        // Then the registry is empty (not an error).
+        assert!(reg.is_empty());
+    }
+
+    #[test]
+    fn load_rejects_malformed_toml() {
+        // Given a LICENSES/ dir with a malformed TOML file.
+        let tmp = tmp_root();
+        let dir = tmp.path().join("LICENSES");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("LicenseRef-Bad.toml"), "not = valid = toml").unwrap();
+
+        // When loading.
+        let result = LicenseRegistry::load(&fs(), tmp.path());
+
+        // Then loading fails.
+        assert!(result.is_err());
+    }
+
+    // --- deny_unknown_fields enforcement ---
+
+    #[test]
+    fn load_rejects_inline_text_field() {
+        // Given a LICENSES/ dir with a TOML carrying the removed `text` field.
+        let tmp = tmp_root();
+        let dir = tmp.path().join("LICENSES");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("LicenseRef-Text.toml"),
+            "id = \"LicenseRef-Text\"\nname = \"x\"\nurl = \"\"\n".to_string()
+                + "[terms]\n"
+                + "requires_attribution = false\n"
+                + "requires_license_notice = false\n"
+                + "requires_source_disclosure = false\n"
+                + "derivatives = \"allowed\"\n"
+                + "requires_modification_notice = false\n"
+                + "allows_commercial_use = true\n"
+                + "allows_redistribution = true\n"
+                + "manual_review = false\n"
+                + "text = \"should be rejected\"\n",
+        )
+        .unwrap();
+
+        // When loading.
+        let result = LicenseRegistry::load(&fs(), tmp.path());
+
+        // Then loading fails — the dropped `text` field is rejected.
+        assert!(result.is_err());
     }
 }

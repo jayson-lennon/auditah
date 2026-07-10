@@ -19,14 +19,14 @@ fn sidecar_wins_over_manifest_in_same_dir() {
 title = "Sword"
 author = "Smith"
 year = 2020
-license = "MIT"
+license = "LicenseRef-Mit"
 source = "https://example.com/sword"
 "#,
         "manifest.toml": r#"
 title = "Pack"
 author = "Quaternius"
 year = 2022
-license = "CC0-1.0"
+license = "LicenseRef-Cc0"
 source = "https://example.com/pack"
 "#,
     };
@@ -42,7 +42,7 @@ source = "https://example.com/pack"
         matches!(r.source, ResolutionSource::Sidecar(_)),
         "sidecar should win"
     );
-    assert_eq!(r.record.unwrap().license, "MIT");
+    assert_eq!(r.record.unwrap().license, "LicenseRef-Mit");
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn subdir_manifest_overrides_parent_manifest() {
 title = "Parent"
 author = "P"
 year = 2020
-license = "CC0-1.0"
+license = "LicenseRef-Cc0"
 source = "https://example.com"
 "#,
         "sub": {
@@ -61,7 +61,7 @@ source = "https://example.com"
 title = "Child"
 author = "C"
 year = 2021
-license = "MIT"
+license = "LicenseRef-Mit"
 source = "https://example.com/child"
 "#,
             "rock.glb": "binary",
@@ -78,7 +78,7 @@ source = "https://example.com/child"
     assert!(matches!(r.source, ResolutionSource::Manifest(_)));
     assert_eq!(
         r.record.unwrap().license,
-        "MIT",
+        "LicenseRef-Mit",
         "subdir manifest should win"
     );
 }
@@ -91,7 +91,7 @@ fn parent_manifest_is_fallback_when_no_subdir_config() {
 title = "Parent"
 author = "P"
 year = 2020
-license = "CC0-1.0"
+license = "LicenseRef-Cc0"
 source = "https://example.com"
 "#,
         "sub": {
@@ -107,7 +107,7 @@ source = "https://example.com"
 
     // Then the parent manifest is the fallback.
     assert!(matches!(r.source, ResolutionSource::Manifest(_)));
-    assert_eq!(r.record.unwrap().license, "CC0-1.0");
+    assert_eq!(r.record.unwrap().license, "LicenseRef-Cc0");
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn filename_with_spaces_resolves_sidecar() {
 title = "Gunny Sack"
 author = "Oliver Herklotz"
 year = 2019
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://poly.pizza/m/download/Gunny-Sack"
 "#
     };

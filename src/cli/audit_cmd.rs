@@ -32,7 +32,7 @@ pub struct AuditCmd {
 /// Returns an error if the services, config, or audit pipeline fail.
 pub fn run(cmd: &AuditCmd) -> Result<CommandStatus, Report<AppError>> {
     let root = &cmd.root;
-    let services = Services::real().change_context(AppError)?;
+    let services = Services::real(root).change_context(AppError)?;
     let config = Config::load(&services.fs, root)
         .change_context(AppError)
         .attach("failed to load config")?;

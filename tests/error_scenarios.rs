@@ -1,7 +1,7 @@
 //! Integration tests: error-scenario coverage.
 //!
 //! Covers the error paths of every `Result`-returning public fn:
-//! - Content errors (malformed TOML, empty text, missing fields) via bad file content.
+//! - Content errors (malformed TOML, removed/stale fields) via bad file content.
 //! - IO errors via `FakeFs` injection (`fail_write`/`fail_walk`) and real temptree
 //!   structurally-unwritable paths.
 //! - CLI `run()` semantics: clean→`Ok(Success)`, violations→`Ok(ComplianceFailure)`,
@@ -30,52 +30,57 @@ mod common;
 
 #[test]
 fn registry_load_rejects_malformed_project_local_toml() {
-    // Given a project with a malformed licenses/*.toml.
+    // Given a project with a malformed LICENSES/*.toml.
     let tree = temptree! {
-        "licenses": {
+        "LICENSES": {
             "Bad.toml": "this is not valid toml = =",
         }
     };
-    let fs = FsService::new(Arc::new(RealFs::new()));
+    let fs = common::real_fs();
     let root = tree.path();
 
     // When loading the registry.
     let result = LicenseRegistry::load(&fs, root);
 
     // Then it errors (malformed TOML rejected).
-    assert!(result.is_err(), "malformed licenses/*.toml must error");
+    assert!(result.is_err(), "malformed LICENSES/*.toml must error");
 }
 
 #[test]
-fn registry_load_rejects_licenseref_with_empty_text() {
-    // Given a project with a LicenseRef-* whose inline text is empty.
+fn registry_load_rejects_dropped_text_field() {
+    // Given a LICENSES/*.toml carrying the removed inline `text` field.
+    // (The text store is now LICENSES/<id>.txt; the grid schema no longer has `text`.)
     let tree = temptree! {
-        "licenses": {
-            "LicenseRef-Empty.toml": r#"
-id = "LicenseRef-Empty"
-name = "Empty"
+        "LICENSES": {
+            "LicenseRef-Text.toml": r#"
+id = "LicenseRef-Text"
+name = "Text"
 url = "https://example.com"
-text = ""
+text = "should be rejected"
+
 [terms]
 requires_attribution = true
 requires_license_notice = false
 requires_source_disclosure = false
-            derivatives = "allowed"
-            requires_modification_notice = false
-            allows_commercial_use = true
-            allows_redistribution = true
-            manual_review = false
+derivatives = "allowed"
+requires_modification_notice = false
+allows_commercial_use = true
+allows_redistribution = true
+manual_review = false
 "#,
         }
     };
-    let fs = FsService::new(Arc::new(RealFs::new()));
+    let fs = common::real_fs();
     let root = tree.path();
 
     // When loading the registry.
     let result = LicenseRegistry::load(&fs, root);
 
-    // Then it errors (custom license requires non-empty text).
-    assert!(result.is_err(), "LicenseRef with empty text must error");
+    // Then it errors (deny_unknown_fields rejects the removed field).
+    assert!(
+        result.is_err(),
+        "LicenseRef TOML with removed `text` field must error"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +153,7 @@ fn resolve_errors_on_sidecar_with_invalid_derivatives_value() {
             r#"title = "X"
 author = "A"
 year = 2020
-license = "CC0-1.0"
+license = "LicenseRef-Asset"
 source = "https://example.com"
 
 [overrides]
@@ -178,7 +183,7 @@ fn resolve_errors_on_sidecar_with_unknown_override_field() {
             r#"title = "X"
 author = "A"
 year = 2020
-license = "CC0-1.0"
+license = "LicenseRef-Asset"
 source = "https://example.com"
 
 [overrides]
@@ -207,9 +212,9 @@ fn write_sidecar_errors_on_injected_write_failure() {
     let fs = FsService::new(Arc::new(
         FakeFs::default().fail_write(Path::new("/x.glb.attr.toml")),
     ));
-    let registry = LicenseRegistry::embedded_only();
+    let registry = LicenseRegistry::empty();
     let services = Services::from_parts(fs, registry);
-    let rec = common::record("CC0-1.0");
+    let rec = common::record("LicenseRef-Asset");
 
     // When writing the sidecar.
     let result = auditah::add::write_sidecar(&services, Path::new("/x.glb"), &rec);
@@ -229,7 +234,7 @@ fn generate_credits_errors_on_injected_write_failure() {
     let fs = FsService::new(Arc::new(
         FakeFs::default().fail_write(Path::new("/out/CREDITS.md")),
     ));
-    let registry = LicenseRegistry::embedded_only();
+    let registry = LicenseRegistry::empty();
     let services = Services::from_parts(fs, registry);
     let cfg = Config {
         commercial_project: false,
@@ -253,26 +258,6 @@ fn generate_credits_errors_on_injected_write_failure() {
     );
 }
 
-#[test]
-fn init_licenses_errors_on_injected_write_failure() {
-    // Given a Services whose FakeFs is set to fail writes into LICENSES/.
-    use auditah::init_licenses::init_licenses;
-    let fs = FsService::new(Arc::new(
-        FakeFs::default().fail_write(Path::new("/proj/LICENSES/CC0-1.0.txt")),
-    ));
-    let registry = LicenseRegistry::embedded_only();
-    let services = Services::from_parts(fs, registry);
-
-    // When running init-licenses.
-    let result = init_licenses(&services, Path::new("/proj"));
-
-    // Then it errors (write failure propagated).
-    assert!(
-        result.is_err(),
-        "init_licenses must propagate write failure"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // IO errors via temptree (real RealFs, structurally-unwritable path)
 // ---------------------------------------------------------------------------
@@ -285,9 +270,9 @@ fn write_sidecar_errors_when_target_is_under_a_file() {
     };
     let root = tree.path();
     let fs = common::real_fs();
-    let registry = LicenseRegistry::embedded_only();
+    let registry = LicenseRegistry::empty();
     let services = Services::from_parts(fs, registry);
-    let rec = common::record("CC0-1.0");
+    let rec = common::record("LicenseRef-Asset");
     // Writing to blocker/x.glb.attr.toml fails because `blocker` is a file.
     let target = root.join("blocker").join("x.glb");
 
@@ -308,7 +293,7 @@ fn run_audit_propagates_walk_failure() {
     use auditah::audit::{run_audit, AuditCtx};
     use auditah::config::Config;
     let fs = FsService::new(Arc::new(FakeFs::default().fail_walk(Path::new("/proj"))));
-    let registry = LicenseRegistry::embedded_only();
+    let registry = LicenseRegistry::empty();
     let services = Services::from_parts(fs, registry);
     let cfg = Config {
         commercial_project: false,
@@ -339,7 +324,7 @@ fn run_audit_propagates_build_excludes_error_without_panic() {
     use auditah::audit::{run_audit, AuditCtx};
     use auditah::config::Config;
     let fs = FsService::new(Arc::new(FakeFs::default()));
-    let registry = LicenseRegistry::embedded_only();
+    let registry = LicenseRegistry::empty();
     let services = Services::from_parts(fs, registry);
     let cfg = Config {
         commercial_project: false,
@@ -369,19 +354,19 @@ fn run_audit_propagates_build_excludes_error_without_panic() {
 
 #[test]
 fn audit_cmd_clean_project_returns_ok_success() {
-    // Given a clean project (CC0 asset with sidecar + LICENSES text).
+    // Given a clean project (a LicenseRef-Asset asset with sidecar + LICENSES text).
     let tree = temptree! {
         "rock.glb": "binary",
         "rock.glb.attr.toml": r#"
 title = "Rock"
 author = "A"
 year = 2020
-license = "CC0-1.0"
+license = "LicenseRef-Asset"
 source = "https://example.com"
 "#,
     };
     let root = tree.path();
-    common::seed_licenses(root);
+    common::seed_license(root, "LicenseRef-Asset");
     let cmd = AuditCmd {
         root: root.to_path_buf(),
     };
@@ -402,7 +387,7 @@ fn audit_cmd_violations_returns_ok_compliance_failure() {
         "sword.glb": "binary",
     };
     let root = tree.path();
-    common::seed_licenses(root);
+    // No license seeded on purpose — an uncovered asset fails regardless.
     let cmd = AuditCmd {
         root: root.to_path_buf(),
     };
@@ -430,7 +415,7 @@ fn add_cmd_run_returns_err_on_write_failure() {
         title: Some("X".to_string()),
         author: Some("A".to_string()),
         year: Some(2020),
-        license: Some("CC0-1.0".to_string()),
+        license: Some("LicenseRef-Asset".to_string()),
         source: Some("https://example.com".to_string()),
         modified: false,
     };
@@ -473,9 +458,3 @@ fn command_to_exit_code_maps_all_three_outcomes() {
     assert_eq!(command_to_exit_code(&ok_fail), 1);
     assert_eq!(command_to_exit_code(&err), 2);
 }
-
-// ---------------------------------------------------------------------------
-// Re-export so the `RealFs` name resolves in the registry tests above.
-// ---------------------------------------------------------------------------
-
-use auditah::services::fs::RealFs;

@@ -31,7 +31,7 @@ pub struct AddLicenseCmd {
 /// Returns an error if services fail or the template write fails (e.g. the file
 /// already exists, or the write fails).
 pub fn run(cmd: &AddLicenseCmd) -> Result<CommandStatus, Report<AppError>> {
-    let services = Services::real().change_context(AppError)?;
+    let services = Services::real(&cmd.root).change_context(AppError)?;
     let path = write_license_template(&services, &cmd.root, &cmd.name).change_context(AppError)?;
     println!("add-license: wrote {}", path.display());
     Ok(CommandStatus::Success)

@@ -71,7 +71,7 @@ pub fn run(cmd: &InitPackCmd) -> Result<CommandStatus, Report<AppError>> {
         package: None,
         overrides: Overrides::default(),
     };
-    let services = Services::real().change_context(AppError)?;
+    let services = Services::real(&cmd.dir).change_context(AppError)?;
     write_manifest(&services, &cmd.dir, &record).change_context(AppError)?;
     println!("init-pack: wrote {}/manifest.toml", cmd.dir.display());
     Ok(CommandStatus::Success)

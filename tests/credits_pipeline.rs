@@ -8,7 +8,9 @@ use auditah::services::Services;
 use temptree::temptree;
 
 mod common;
-use common::{non_commercial_config, services};
+use auditah::model::terms::LicenseTerms;
+use auditah::registry::LicenseSpec;
+use common::{non_commercial_config, permissive_terms, services_with};
 
 /// Generate credits to `<root>/CREDITS.md` and return the file contents.
 fn generated(ctx: &CreditsCtx) -> String {
@@ -36,12 +38,12 @@ fn cc0_assets_are_omitted_from_credits() {
 title = "Rock"
 author = "Quaternius"
 year = 2022
-license = "CC0-1.0"
+license = "LicenseRef-Cc0"
 source = "https://poly.pizza"
 "#
     };
     let root = tree.path();
-    let svc = services();
+    let svc = services_with([LicenseSpec::new("LicenseRef-Cc0").terms(permissive_terms())]);
     let cfg = non_commercial_config();
 
     // When generating credits.
@@ -69,7 +71,7 @@ fn cc_by_assets_grouped_by_author() {
 title = "Alpha"
 author = "Oliver Herklotz"
 year = 2019
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://example.com/a"
 "#,
         "b.glb": "binary",
@@ -77,7 +79,7 @@ source = "https://example.com/a"
 title = "Beta"
 author = "Quaternius"
 year = 2022
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://example.com/b"
 "#,
         "c.glb": "binary",
@@ -85,12 +87,15 @@ source = "https://example.com/b"
 title = "Gamma"
 author = "Oliver Herklotz"
 year = 2020
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://example.com/c"
 "#
     };
     let root = tree.path();
-    let svc = services();
+    let svc = services_with([LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
+        requires_attribution: true,
+        ..permissive_terms()
+    })]);
     let cfg = non_commercial_config();
 
     // When generating credits.
@@ -118,7 +123,7 @@ fn modification_notice_emitted_only_when_required_and_modified() {
 title = "Mod1"
 author = "A"
 year = 2020
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://example.com"
 modified = true
 
@@ -131,7 +136,7 @@ requires_modification_notice = true
 title = "Mod2"
 author = "A"
 year = 2020
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://example.com"
 modified = true
 
@@ -144,7 +149,7 @@ requires_modification_notice = false
 title = "Mod3"
 author = "A"
 year = 2020
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://example.com"
 modified = false
 
@@ -153,7 +158,10 @@ requires_modification_notice = true
 "#
     };
     let root = tree.path();
-    let svc = services();
+    let svc = services_with([LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
+        requires_attribution: true,
+        ..permissive_terms()
+    })]);
     let cfg = non_commercial_config();
 
     // When generating credits.

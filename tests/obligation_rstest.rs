@@ -11,7 +11,11 @@ use auditah::config::Config;
 use temptree::temptree;
 
 mod common;
-use common::{codes_for, commercial_config, non_commercial_config, services};
+use auditah::model::terms::LicenseTerms;
+use auditah::registry::LicenseSpec;
+use common::{
+    codes_for, commercial_config, non_commercial_config, permissive_terms, services_with,
+};
 
 /// The shared assertion: the asset named by `needle` must surface `expected`.
 fn assert_finding(ctx: &AuditCtx, needle: &str, expected: FindingCode) {
@@ -37,7 +41,7 @@ fn assert_finding(ctx: &AuditCtx, needle: &str, expected: FindingCode) {
 title = "U"
 author = "A"
 year = 2020
-license = "GPL-3.0"
+license = "LicenseRef-Unknown"
 source = "https://example.com"
 "#,
     non_commercial_config(),
@@ -49,7 +53,7 @@ source = "https://example.com"
 title = "Incomplete"
 author = "A"
 year = 2020
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = ""
 "#,
     non_commercial_config(),
@@ -61,7 +65,7 @@ source = ""
 title = "NC"
 author = "A"
 year = 2020
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://example.com"
 
 [overrides]
@@ -76,7 +80,7 @@ allows_commercial_use = false
 title = "Mod"
 author = "A"
 year = 2020
-license = "CC-BY-3.0"
+license = "LicenseRef-CcBy"
 source = "https://example.com"
 modified = true
 
@@ -103,7 +107,12 @@ fn obligation_violation_surfaces_expected_finding_code(
         let sidecar_path = root.join(format!("{asset_name}.attr.toml"));
         std::fs::write(&sidecar_path, sidecar).unwrap();
     }
-    let svc = services();
+    // A permissive-with-attribution license covers the attribution-requiring cases;
+    // the unknown/uncovered cases never resolve against it.
+    let svc = services_with([LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
+        requires_attribution: true,
+        ..permissive_terms()
+    })]);
     let ctx = AuditCtx {
         services: &svc,
         config: &config,

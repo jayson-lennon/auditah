@@ -153,7 +153,7 @@ mod tests {
             title: "Gunny Sack".to_string(),
             author: "Oliver Herklotz".to_string(),
             year: 2019,
-            license: "CC-BY-3.0".to_string(),
+            license: "LicenseRef-CcBy".to_string(),
             source: "https://poly.pizza".to_string(),
             modified: false,
             package: None,

@@ -5,8 +5,8 @@
 
 use auditah::cli::command_to_exit_code;
 use auditah::cli::{
-    add_cmd::AddCmd, add_license_cmd::AddLicenseCmd, audit_cmd::AuditCmd,
-    credits_cmd::CreditsCmd, init_pack_cmd::InitPackCmd, CommandStatus,
+    add_cmd::AddCmd, add_license_cmd::AddLicenseCmd, audit_cmd::AuditCmd, credits_cmd::CreditsCmd,
+    init_pack_cmd::InitPackCmd, CommandStatus,
 };
 use clap::{Parser, Subcommand};
 use error_stack::Report;
