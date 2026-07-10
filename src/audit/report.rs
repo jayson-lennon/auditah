@@ -28,9 +28,9 @@ pub enum FindingCode {
     IncompleteAttribution,
     /// `allows_commercial_use = false` (effective) under a commercial project.
     NotCommerciallyLicensed,
-    /// `allows_modifications = false` (effective) but `modified = true`.
+    /// `derivatives = "disallowed"` (effective) but `modified = true`.
     ModifiedUnderNoDerivatives,
-    /// `requires_share_alike` — human must confirm distribution license.
+    /// `derivatives = "share-alike"` — human must confirm distribution license.
     ShareAlikeReview,
     /// `requires_source_disclosure` — human must confirm source offering.
     SourceDisclosureReview,
@@ -38,6 +38,10 @@ pub enum FindingCode {
     LicenseNoticeReview,
     /// Referenced license id has no `LICENSES/<id>.txt` file on disk.
     MissingLicenseText,
+    /// `allows_redistribution = false` (effective) under a redistributing project.
+    RedistributionViolation,
+    /// `manual_review = true` and license id not in `manual_review_acknowledged`.
+    ManualReviewRequired,
 }
 
 /// A single audit finding about one asset.

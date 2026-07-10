@@ -2,9 +2,14 @@
 //! real temp filesystem. One BDD test per behavior, mapped to the plan's test
 //! cases table.
 
+use std::sync::Arc;
+
 use auditah::audit::report::{FindingCode, Severity};
 use auditah::audit::{run_audit, AuditCtx};
 use auditah::config::Config;
+use auditah::registry::LicenseRegistry;
+use auditah::services::fs::{FsService, RealFs};
+use auditah::services::Services;
 use temptree::temptree;
 
 mod common;
@@ -154,6 +159,8 @@ allows_commercial_use = false
     let svc = services();
     let cfg = Config {
         commercial_project: true,
+        redistributes_assets: false,
+        manual_review_acknowledged: Vec::new(),
         exclude: Vec::new(),
     };
     let ctx = AuditCtx {
@@ -173,7 +180,7 @@ allows_commercial_use = false
     );
 }
 
-// Test case 9: allows_modifications=false (via override) + modified=true → FAIL.
+// Test case 9: derivatives="disallowed" (via override) + modified=true → FAIL.
 #[test]
 fn modified_under_no_derivatives_fails() {
     // Given a modified asset overridden to no-derivatives.
@@ -188,7 +195,7 @@ source = "https://example.com"
 modified = true
 
 [overrides]
-allows_modifications = false
+derivatives = "disallowed"
 "#
     };
     let root = tree.path();
@@ -211,7 +218,7 @@ allows_modifications = false
     );
 }
 
-// Test case 10: requires_share_alike=true (via override) → FLAG, not Fail.
+// Test case 10: derivatives="share-alike" (via override) → FLAG, not Fail.
 #[test]
 fn share_alike_is_flag_not_fail() {
     // Given a CC-BY asset overridden to share-alike, with licenses seeded.
@@ -225,7 +232,7 @@ license = "CC-BY-3.0"
 source = "https://example.com"
 
 [overrides]
-requires_share_alike = true
+derivatives = "share-alike"
 "#
     };
     let root = tree.path();
@@ -308,6 +315,8 @@ fn excluded_glob_asset_not_audited() {
     let svc = services();
     let cfg = Config {
         commercial_project: false,
+        redistributes_assets: false,
+        manual_review_acknowledged: Vec::new(),
         exclude: vec!["vendor/**".to_string()],
     };
     let ctx = AuditCtx {
@@ -328,4 +337,196 @@ fn excluded_glob_asset_not_audited() {
         "excluded asset should not appear in findings"
     );
     assert!(!report.has_failures());
+}
+
+// Test case 5: redistributes_assets=true + allows_redistribution=false -> FAIL.
+#[test]
+fn redistribution_violation_fails_when_project_redistributes() {
+    // Given a redistributing project and an asset whose license forbids redistribution.
+    let tree = temptree! {
+        "sword.glb": "binary",
+        "sword.glb.attr.toml": "title = \"Sword\"\nauthor = \"A\"\nyear = 2020\nlicense = \"CC-BY-3.0\"\nsource = \"https://x\"\n\n[overrides]\nallows_redistribution = false\n",
+    };
+    let root = tree.path();
+    seed_licenses(root);
+    let svc = services();
+    let cfg = Config {
+        commercial_project: false,
+        redistributes_assets: true,
+        manual_review_acknowledged: Vec::new(),
+        exclude: Vec::new(),
+    };
+    let ctx = AuditCtx {
+        services: &svc,
+        config: &cfg,
+        root,
+    };
+
+    // When running the audit.
+    let report = run_audit(&ctx).unwrap();
+
+    // Then the asset FAILs as RedistributionViolation.
+    let codes = codes_for(&report, "sword");
+    assert!(
+        codes.contains(&FindingCode::RedistributionViolation),
+        "expected RedistributionViolation, got {codes:?}"
+    );
+}
+
+// Test case 6: redistributes_assets=false + allows_redistribution=false -> clean.
+#[test]
+fn redistribution_gate_inactive_when_project_does_not_redistribute() {
+    // Given a non-redistributing project and an asset whose license forbids redistribution.
+    let tree = temptree! {
+        "sword.glb": "binary",
+        "sword.glb.attr.toml": "title = \"Sword\"\nauthor = \"A\"\nyear = 2020\nlicense = \"CC-BY-3.0\"\nsource = \"https://x\"\n\n[overrides]\nallows_redistribution = false\n",
+    };
+    let root = tree.path();
+    seed_licenses(root);
+    let svc = services();
+    let cfg = Config {
+        commercial_project: false,
+        redistributes_assets: false,
+        manual_review_acknowledged: Vec::new(),
+        exclude: Vec::new(),
+    };
+    let ctx = AuditCtx {
+        services: &svc,
+        config: &cfg,
+        root,
+    };
+
+    // When running the audit.
+    let report = run_audit(&ctx).unwrap();
+
+    // Then no redistribution finding fires (gate inactive) and audit is clean.
+    assert!(
+        report
+            .findings
+            .iter()
+            .all(|f| f.code != FindingCode::RedistributionViolation),
+        "redistribution gate should be inactive"
+    );
+    assert!(
+        !report.has_failures(),
+        "expected clean audit, got: {:?}",
+        report.findings
+    );
+}
+
+// Test case 7: manual_review=true, not acknowledged -> FAIL.
+#[test]
+fn manual_review_fails_until_acknowledged() {
+    // Given a bespoke EULA license marked manual_review and an asset using it.
+    let tree = temptree! {
+        "fx.ogg": "binary",
+        "fx.ogg.attr.toml": "title = \"FX\"\nauthor = \"A\"\nyear = 2020\nlicense = \"LicenseRef-EULA\"\nsource = \"https://x\"\n",
+        "LICENSES": {
+            "LicenseRef-EULA.txt": "custom eula text\n"
+        },
+        "licenses": {
+            "LicenseRef-EULA.toml": r#"
+id = "LicenseRef-EULA"
+name = "Bespoke EULA"
+url = "https://example.com/eula"
+text = "custom eula text"
+[terms]
+requires_attribution = true
+requires_license_notice = false
+requires_source_disclosure = false
+derivatives = "allowed"
+requires_modification_notice = false
+allows_commercial_use = true
+allows_redistribution = false
+manual_review = true
+"#
+        },
+    };
+    let root = tree.path();
+    let fs = FsService::new(Arc::new(RealFs::new()));
+    let registry = LicenseRegistry::load(&fs, root).unwrap();
+    let svc = Services { fs, registry };
+    let cfg = Config {
+        commercial_project: false,
+        redistributes_assets: false,
+        manual_review_acknowledged: Vec::new(),
+        exclude: Vec::new(),
+    };
+    let ctx = AuditCtx {
+        services: &svc,
+        config: &cfg,
+        root,
+    };
+
+    // When running the audit.
+    let report = run_audit(&ctx).unwrap();
+
+    // Then the asset FAILs as ManualReviewRequired (not acknowledged).
+    let codes = codes_for(&report, "fx");
+    assert!(
+        codes.contains(&FindingCode::ManualReviewRequired),
+        "expected ManualReviewRequired, got {codes:?}"
+    );
+}
+
+// Test case 8: manual_review=true, id in manual_review_acknowledged -> clean.
+#[test]
+fn manual_review_passes_when_acknowledged() {
+    // Given a bespoke EULA license marked manual_review that IS acknowledged in config.
+    let tree = temptree! {
+        "fx.ogg": "binary",
+        "fx.ogg.attr.toml": "title = \"FX\"\nauthor = \"A\"\nyear = 2020\nlicense = \"LicenseRef-EULA\"\nsource = \"https://x\"\n",
+        "LICENSES": {
+            "LicenseRef-EULA.txt": "custom eula text\n"
+        },
+        "licenses": {
+            "LicenseRef-EULA.toml": r#"
+id = "LicenseRef-EULA"
+name = "Bespoke EULA"
+url = "https://example.com/eula"
+text = "custom eula text"
+[terms]
+requires_attribution = true
+requires_license_notice = false
+requires_source_disclosure = false
+derivatives = "allowed"
+requires_modification_notice = false
+allows_commercial_use = true
+allows_redistribution = false
+manual_review = true
+"#
+        },
+    };
+    let root = tree.path();
+    let fs = FsService::new(Arc::new(RealFs::new()));
+    let registry = LicenseRegistry::load(&fs, root).unwrap();
+    let svc = Services { fs, registry };
+    let cfg = Config {
+        commercial_project: false,
+        redistributes_assets: false,
+        manual_review_acknowledged: vec!["LicenseRef-EULA".to_string()],
+        exclude: Vec::new(),
+    };
+    let ctx = AuditCtx {
+        services: &svc,
+        config: &cfg,
+        root,
+    };
+
+    // When running the audit.
+    let report = run_audit(&ctx).unwrap();
+
+    // Then no manual-review finding fires and audit is clean.
+    assert!(
+        report
+            .findings
+            .iter()
+            .all(|f| f.code != FindingCode::ManualReviewRequired),
+        "acknowledged license should not surface manual-review finding"
+    );
+    assert!(
+        !report.has_failures(),
+        "expected clean audit, got: {:?}",
+        report.findings
+    );
 }

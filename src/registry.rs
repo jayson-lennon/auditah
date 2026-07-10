@@ -73,7 +73,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::model::terms::{effective_terms, Overrides};
+    use crate::model::terms::{effective_terms, Derivatives, Overrides};
 
     #[test]
     fn embedded_registry_contains_all_four_expected_ids() {
@@ -198,10 +198,11 @@ mod tests {
             requires_attribution = false
             requires_license_notice = true
             requires_source_disclosure = false
-            requires_share_alike = false
+            derivatives = "allowed"
             requires_modification_notice = false
             allows_commercial_use = false
-            allows_modifications = true
+            allows_redistribution = true
+            manual_review = false
         "#;
         let fs = FsService::new(Arc::new(FakeFs::with_files([(
             "/proj/licenses/MIT.toml",
@@ -232,10 +233,11 @@ mod tests {
             requires_attribution = true
             requires_license_notice = true
             requires_source_disclosure = false
-            requires_share_alike = false
+            derivatives = "disallowed"
             requires_modification_notice = false
             allows_commercial_use = true
-            allows_modifications = false
+            allows_redistribution = false
+            manual_review = false
         "#;
         let fs = FsService::new(Arc::new(FakeFs::with_files([(
             "/proj/licenses/LicenseRef-StudioEULA.toml",
@@ -248,7 +250,7 @@ mod tests {
         // Then the LicenseRef is added (4 embedded + 1) and its terms are honored.
         assert_eq!(reg.len(), 5, "4 embedded + 1 LicenseRef");
         let custom = reg.get("LicenseRef-StudioEULA").unwrap();
-        assert!(!custom.terms.allows_modifications);
+        assert_eq!(custom.terms.derivatives, Derivatives::Disallowed);
     }
 }
 

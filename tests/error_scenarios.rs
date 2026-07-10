@@ -59,10 +59,11 @@ text = ""
 requires_attribution = true
 requires_license_notice = false
 requires_source_disclosure = false
-requires_share_alike = false
-requires_modification_notice = false
-allows_commercial_use = true
-allows_modifications = true
+            derivatives = "allowed"
+            requires_modification_notice = false
+            allows_commercial_use = true
+            allows_redistribution = true
+            manual_review = false
 "#,
         }
     };
@@ -172,6 +173,8 @@ fn generate_credits_errors_on_injected_write_failure() {
     let services = Services::from_parts(fs, registry);
     let cfg = Config {
         commercial_project: false,
+        redistributes_assets: false,
+        manual_review_acknowledged: Vec::new(),
         exclude: Vec::new(),
     };
     let ctx = CreditsCtx {
@@ -249,6 +252,8 @@ fn run_audit_propagates_walk_failure() {
     let services = Services::from_parts(fs, registry);
     let cfg = Config {
         commercial_project: false,
+        redistributes_assets: false,
+        manual_review_acknowledged: Vec::new(),
         exclude: Vec::new(),
     };
     let ctx = AuditCtx {

@@ -2,14 +2,15 @@ id = "OFL-1.1"
 name = "SIL Open Font License 1.1"
 url = "https://opensource.org/licenses/OFL-1.1"
 # text is loaded from the companion OFL-1.1.txt at compile time.
+# Note: OFL allows modifications but a Reserved Font Name clause may still
+# restrict renaming; this is not modeled by the terms grid.
 
 [terms]
 requires_attribution = false
 requires_license_notice = true
 requires_source_disclosure = false
-requires_share_alike = true
+derivatives = "share-alike"
 requires_modification_notice = false
 allows_commercial_use = true
-# OFL allows modifications but reserves font names; a Reserved Font Name
-# clause (not modeled by the boolean set) may still restrict renaming.
-allows_modifications = true
+allows_redistribution = true
+manual_review = false

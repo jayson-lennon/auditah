@@ -18,6 +18,16 @@ pub struct Config {
     /// effective terms have `allows_commercial_use = false` FAIL the audit.
     #[serde(default)]
     pub commercial_project: bool,
+    /// Whether the project redistributes assets (re-hosts / resells the raw
+    /// asset itself, not just shipping it embedded in a product). When true,
+    /// assets whose effective terms have `allows_redistribution = false` FAIL.
+    #[serde(default)]
+    pub redistributes_assets: bool,
+    /// SPDX license ids whose `manual_review` obligation has been reviewed and
+    /// acknowledged for this project. An acknowledged id suppresses its
+    /// `ManualReviewRequired` FAIL. Acknowledgment is permanent and silent.
+    #[serde(default)]
+    pub manual_review_acknowledged: Vec<String>,
     /// User-supplied glob patterns to exclude from enumeration (in addition to
     /// the built-in default excludes). Matched against paths relative to root.
     #[serde(default)]
@@ -71,8 +81,10 @@ mod tests {
         // When loading the config.
         let cfg = Config::load(&fs, Path::new("/proj")).unwrap();
 
-        // Then defaults are used (non-commercial, no excludes).
+        // Then defaults are used (non-commercial, no redistribution, no acks, no excludes).
         assert!(!cfg.commercial_project);
+        assert!(!cfg.redistributes_assets);
+        assert!(cfg.manual_review_acknowledged.is_empty());
         assert!(cfg.exclude.is_empty());
     }
 
@@ -116,5 +128,35 @@ exclude = ["vendor/**", "*.bak"]
 
         // Then loading returns an error.
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn redistributes_assets_flag_parses() {
+        // Given a config with redistributes_assets = true.
+        let fs = fs_with(&[("/proj/auditah.toml", "redistributes_assets = true\n")]);
+
+        // When loading the config.
+        let cfg = Config::load(&fs, Path::new("/proj")).unwrap();
+
+        // Then the redistribution flag is true.
+        assert!(cfg.redistributes_assets);
+    }
+
+    #[test]
+    fn manual_review_acknowledged_list_parses() {
+        // Given a config with an acknowledged license id.
+        let fs = fs_with(&[(
+            "/proj/auditah.toml",
+            "manual_review_acknowledged = [\"LicenseRef-StudioEULA\", \"OFL-1.1\"]\n",
+        )]);
+
+        // When loading the config.
+        let cfg = Config::load(&fs, Path::new("/proj")).unwrap();
+
+        // Then both acknowledged ids parse into the vec.
+        assert_eq!(
+            cfg.manual_review_acknowledged,
+            vec!["LicenseRef-StudioEULA", "OFL-1.1"]
+        );
     }
 }

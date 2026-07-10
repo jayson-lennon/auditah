@@ -11,7 +11,7 @@ use toml_edit::{table, value, DocumentMut};
 use wherror::Error;
 
 use crate::model::attribution::AttributionRecord;
-use crate::model::terms::Overrides;
+use crate::model::terms::{Derivatives, Overrides};
 use crate::services::Services;
 
 /// Error writing a scaffolded attribution file.
@@ -100,10 +100,19 @@ fn has_any_override(o: &Overrides) -> bool {
     o.requires_attribution.is_some()
         || o.requires_license_notice.is_some()
         || o.requires_source_disclosure.is_some()
-        || o.requires_share_alike.is_some()
+        || o.derivatives.is_some()
         || o.requires_modification_notice.is_some()
         || o.allows_commercial_use.is_some()
-        || o.allows_modifications.is_some()
+        || o.allows_redistribution.is_some()
+}
+
+/// Serialize a [`Derivatives`] override to its kebab-case TOML string, with no new dependency.
+fn derivatives_to_kebab(d: &Overrides) -> Option<&'static str> {
+    d.derivatives.as_ref().map(|d| match d {
+        Derivatives::Disallowed => "disallowed",
+        Derivatives::Allowed => "allowed",
+        Derivatives::ShareAlike => "share-alike",
+    })
 }
 
 /// Build the `[overrides]` sub-table, including only set fields.
@@ -118,8 +127,8 @@ fn override_table(o: &Overrides) -> toml_edit::Item {
     if let Some(v) = o.requires_source_disclosure {
         t["requires_source_disclosure"] = value(v);
     }
-    if let Some(v) = o.requires_share_alike {
-        t["requires_share_alike"] = value(v);
+    if let Some(s) = derivatives_to_kebab(o) {
+        t["derivatives"] = value(s);
     }
     if let Some(v) = o.requires_modification_notice {
         t["requires_modification_notice"] = value(v);
@@ -127,8 +136,8 @@ fn override_table(o: &Overrides) -> toml_edit::Item {
     if let Some(v) = o.allows_commercial_use {
         t["allows_commercial_use"] = value(v);
     }
-    if let Some(v) = o.allows_modifications {
-        t["allows_modifications"] = value(v);
+    if let Some(v) = o.allows_redistribution {
+        t["allows_redistribution"] = value(v);
     }
     t
 }
@@ -181,6 +190,25 @@ mod tests {
         // Then the parsed record equals the original including overrides.
         assert_eq!(parsed, record);
         assert_eq!(parsed.overrides.allows_commercial_use, Some(false));
+    }
+
+    #[test]
+    fn rendered_record_with_derivatives_override_round_trips() {
+        // Given a record with a derivatives override.
+        let mut record = sample_record();
+        record.overrides = Overrides {
+            derivatives: Some(Derivatives::ShareAlike),
+            allows_redistribution: Some(false),
+            ..Default::default()
+        };
+
+        // When rendering to TOML and parsing back.
+        let toml = render_record(&record);
+        let parsed: AttributionRecord = toml::from_str(&toml).expect("must round-trip");
+
+        // Then the derivatives override round-trips as the same variant.
+        assert_eq!(parsed.overrides.derivatives, Some(Derivatives::ShareAlike));
+        assert_eq!(parsed.overrides.allows_redistribution, Some(false));
     }
 
     #[test]

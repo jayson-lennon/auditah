@@ -44,6 +44,8 @@ pub fn seed_licenses(root: &std::path::Path) {
 pub fn non_commercial_config() -> Config {
     Config {
         commercial_project: false,
+        redistributes_assets: false,
+        manual_review_acknowledged: Vec::new(),
         exclude: Vec::new(),
     }
 }
@@ -65,6 +67,8 @@ pub fn config() -> Config {
 pub fn commercial_config() -> Config {
     Config {
         commercial_project: true,
+        redistributes_assets: false,
+        manual_review_acknowledged: Vec::new(),
         exclude: Vec::new(),
     }
 }

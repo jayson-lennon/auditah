@@ -96,10 +96,11 @@ Each license in the registry declares its obligations and permissions:
 requires_attribution       = true    # obligation: you MUST do this
 requires_license_notice    = false
 requires_source_disclosure = false
-requires_share_alike       = false
+derivatives                = "allowed"  # allowed | disallowed | share-alike
 requires_modification_notice = true
 allows_commercial_use      = true    # permission: you MAY do this
-allows_modifications       = true
+allows_redistribution      = true
+manual_review              = false   # license-only: surface for human review
 ```
 
 **Effective terms** for an asset are the license's terms, with optional
@@ -118,10 +119,10 @@ source  = "https://example.com"
 allows_commercial_use = false   # opt this asset out of commercial use
 ```
 
-> **Override-semantics caveat:** in v1, if any override field is set, the
-> **entire** term set is taken from the override block, not merged field-by-field
-> with the license. Specify all the fields that matter for that asset. This will
-> become field-level merging in a future version.
+> **Override semantics:** overrides merge field-by-field onto the license's
+> terms. Set only the fields that differ for that asset; everything else
+> inherits from the license. `manual_review` is license-only and cannot be
+> overridden.
 
 ## What the audit checks
 
@@ -132,9 +133,11 @@ allows_commercial_use = false   # opt this asset out of commercial use
 | `license` id not in the registry | **FAIL** — unknown license |
 | `requires_attribution` but missing title/author/source | **FAIL** — incomplete attribution |
 | `allows_commercial_use = false` and `commercial_project = true` | **FAIL** |
-| `allows_modifications = false` and `modified = true` | **FAIL** — no-derivatives |
+| `allows_redistribution = false` and `redistributes_assets = true` | **FAIL** — no redistribution |
+| `derivatives = "disallowed"` and `modified = true` | **FAIL** — no-derivatives |
 | Referenced license has no `LICENSES/<id>.txt` | **FAIL** — missing license text |
-| `requires_share_alike`, `requires_source_disclosure`, `requires_license_notice` | **FLAG** — needs human review |
+| `derivatives = "share-alike"`, `requires_source_disclosure`, `requires_license_notice` | **FLAG** — needs human review |
+| `manual_review = true` and not in `manual_review_acknowledged` | **FAIL** — requires human review + ack |
 
 `audit` exits non-zero on any FAIL. FLAGs are reported but don't block.
 
