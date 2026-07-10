@@ -10,9 +10,9 @@ use temptree::temptree;
 
 mod common;
 
-// Test case 1: `add-license Foo` writes LICENSES/LicenseRef-Foo.toml with permissive defaults.
+// Test case 1: `add-license Foo` writes LICENSES/LicenseRef-Foo.toml with default_fail() defaults.
 #[test]
-fn add_license_writes_permissive_grid_for_licenseref_name() {
+fn add_license_writes_default_fail_grid_for_licenseref_name() {
     // Given an empty project root and a Services backed by a real fs.
     let tree = temptree! {};
     let root = tree.path();
@@ -22,15 +22,16 @@ fn add_license_writes_permissive_grid_for_licenseref_name() {
     let path = write_license_template(&services, root, "Foo").expect("write");
 
     // Then the file is at LICENSES/LicenseRef-Foo.toml, id is auto-prefixed,
-    // and the permissive defaults are present.
+    // and the default_fail() shape is present.
     assert_eq!(path, license_grid_path(root, "LicenseRef-Foo"));
     let content = std::fs::read_to_string(&path).expect("read");
     assert!(content.contains("id = \"LicenseRef-Foo\""));
-    assert!(content.contains("derivatives = \"allowed\""));
+    // default_fail(): maximally restrictive, manual_review = true.
+    assert!(content.contains("derivatives = \"disallowed\""));
     assert!(content.contains("requires_attribution = false"));
-    assert!(content.contains("allows_commercial_use = true"));
-    assert!(content.contains("allows_redistribution = true"));
-    assert!(content.contains("manual_review = false"));
+    assert!(content.contains("allows_commercial_use = false"));
+    assert!(content.contains("allows_redistribution = false"));
+    assert!(content.contains("manual_review = true"));
 }
 
 // Test case 2: every [terms] field has a `#` comment explaining it.
