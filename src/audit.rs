@@ -42,7 +42,7 @@ pub struct AuditCtx<'a> {
 ///
 /// Returns `AuditError` if enumeration or resolution encounters an IO/parse failure.
 pub fn run_audit(ctx: &AuditCtx) -> Result<AuditReport, Report<AuditError>> {
-    let excludes = build_excludes(ctx);
+    let excludes = build_excludes(ctx)?;
     let assets = enumerate(&ctx.services.fs, ctx.root, &excludes)
         .change_context(AuditError)
         .attach("failed to enumerate assets")?;
@@ -74,12 +74,20 @@ pub fn run_audit(ctx: &AuditCtx) -> Result<AuditReport, Report<AuditError>> {
 }
 
 /// Build the exclude matcher from default + user-supplied globs.
-fn build_excludes(ctx: &AuditCtx) -> ExcludeMatcher {
+///
+/// Defense in depth: [`Config::load`] validates globs eagerly, but a
+/// `Config` constructed directly (e.g. in tests) bypasses that, so this stays
+/// fallible and propagates the error rather than panicking.
+///
+/// # Errors
+///
+/// Returns `AuditError` if any exclude glob fails to compile.
+fn build_excludes(ctx: &AuditCtx) -> Result<ExcludeMatcher, Report<AuditError>> {
     let patterns = crate::discovery::all_excludes(&ctx.config.exclude);
     ExcludeMatcher::new(&patterns)
-        .expect("default + user exclude patterns must compile (validated at config load)")
+        .change_context(AuditError)
+        .attach("invalid exclude glob in auditah.toml")
 }
-
 /// Surface orphan sidecars as Fail findings.
 fn check_orphan_sidecars(all_files: &[PathBuf], ctx: &AuditCtx, report: &mut AuditReport) {
     for orphan in find_orphan_sidecars(&ctx.services.fs, all_files) {

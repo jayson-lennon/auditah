@@ -142,6 +142,7 @@ fn override_table(o: &Overrides) -> toml_edit::Item {
     t
 }
 
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,6 +210,65 @@ mod tests {
         // Then the derivatives override round-trips as the same variant.
         assert_eq!(parsed.overrides.derivatives, Some(Derivatives::ShareAlike));
         assert_eq!(parsed.overrides.allows_redistribution, Some(false));
+    }
+
+    #[test]
+    fn rendered_record_with_disallowed_derivatives_round_trips() {
+        // Given a record with a Disallowed derivatives override.
+        let mut record = sample_record();
+        record.overrides = Overrides {
+            derivatives: Some(Derivatives::Disallowed),
+            ..Default::default()
+        };
+
+        // When rendering to TOML and parsing back.
+        let toml = render_record(&record);
+        let parsed: AttributionRecord = toml::from_str(&toml).expect("must round-trip");
+
+        // Then the Disallowed variant round-trips as the kebab-case "disallowed".
+        assert_eq!(parsed.overrides.derivatives, Some(Derivatives::Disallowed));
+        assert!(toml.contains("derivatives = \"disallowed\""));
+    }
+
+    #[test]
+    fn rendered_record_with_allowed_derivatives_round_trips() {
+        // Given a record with an Allowed derivatives override.
+        let mut record = sample_record();
+        record.overrides = Overrides {
+            derivatives: Some(Derivatives::Allowed),
+            ..Default::default()
+        };
+
+        // When rendering to TOML and parsing back.
+        let toml = render_record(&record);
+        let parsed: AttributionRecord = toml::from_str(&toml).expect("must round-trip");
+
+        // Then the Allowed variant round-trips as the kebab-case "allowed".
+        assert_eq!(parsed.overrides.derivatives, Some(Derivatives::Allowed));
+        assert!(toml.contains("derivatives = \"allowed\""));
+    }
+
+    #[test]
+    fn rendered_record_with_all_override_fields_round_trips() {
+        // Given a record with every override field set to a non-default value.
+        let overrides = Overrides {
+            requires_attribution: Some(false),
+            requires_license_notice: Some(true),
+            requires_source_disclosure: Some(true),
+            derivatives: Some(Derivatives::ShareAlike),
+            requires_modification_notice: Some(true),
+            allows_commercial_use: Some(false),
+            allows_redistribution: Some(false),
+        };
+        let mut record = sample_record();
+        record.overrides = overrides.clone();
+
+        // When rendering to TOML and parsing back.
+        let toml = render_record(&record);
+        let parsed: AttributionRecord = toml::from_str(&toml).expect("must round-trip");
+
+        // Then every override field round-trips unchanged (all 7 fields exercised).
+        assert_eq!(parsed.overrides, overrides);
     }
 
     #[test]

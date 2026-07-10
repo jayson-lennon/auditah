@@ -68,6 +68,7 @@ pub fn embedded_entries() -> HashMap<String, LicenseRegistryEntry> {
     map
 }
 
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

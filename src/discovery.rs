@@ -50,6 +50,7 @@ pub fn all_excludes(user_excludes: &[String]) -> Vec<String> {
     all
 }
 
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use super::*;

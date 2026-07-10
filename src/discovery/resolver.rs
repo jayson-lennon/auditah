@@ -163,6 +163,7 @@ fn strip_sidecar_suffix(sidecar: &Path) -> PathBuf {
     PathBuf::from(stripped)
 }
 
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use super::*;

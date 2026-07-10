@@ -88,6 +88,7 @@ fn filter_candidates(all: &[PathBuf], root: &Path, excludes: &ExcludeMatcher) ->
         .collect()
 }
 
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use super::*;

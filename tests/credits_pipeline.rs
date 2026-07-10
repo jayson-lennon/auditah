@@ -1,5 +1,6 @@
 //! Integration tests: the `credits` pipeline end-to-end against a real temp fs.
 //! Asserts on the generated CREDITS.md content (the public contract).
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auditah::config::Config;
 use auditah::credits::{generate_credits, CreditsCtx};

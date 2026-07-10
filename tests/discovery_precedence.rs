@@ -1,6 +1,7 @@
 //! Integration tests: discovery + resolution precedence against a real
 //! temp filesystem. These exercise `walkdir`/`globset` behavior that the
 //! in-memory unit-test fakes do not.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auditah::discovery::enumerator::{enumerate, ExcludeMatcher};
 use auditah::discovery::resolver::{resolve, ResolutionSource, MANIFEST_FILENAME, SIDECAR_SUFFIX};

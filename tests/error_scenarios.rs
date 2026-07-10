@@ -6,6 +6,7 @@
 //!   structurally-unwritable paths.
 //! - CLI `run()` semantics: clean→`Ok(Success)`, violations→`Ok(ComplianceFailure)`,
 //!   technical failure→`Err`; plus exit-code mapping.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auditah::cli::audit_cmd::{run as audit_run, AuditCmd};
 use auditah::cli::command_to_exit_code;
@@ -134,6 +135,65 @@ source = "https://example.com"
     assert!(
         result.is_err(),
         "sidecar missing `license` field must error"
+    );
+}
+
+#[test]
+fn resolve_errors_on_sidecar_with_invalid_derivatives_value() {
+    // Given a sidecar with an invalid derivatives enum value under [overrides].
+    let fs = FsService::new(Arc::new(FakeFs::with_files([
+        (Path::new("/x.glb"), ""),
+        (
+            Path::new("/x.glb.attr.toml"),
+            r#"title = "X"
+author = "A"
+year = 2020
+license = "CC0-1.0"
+source = "https://example.com"
+
+[overrides]
+derivatives = "foobar"
+"#,
+        ),
+    ])));
+
+    // When resolving.
+    let result = resolve(&fs, Path::new("/x.glb"), Path::new("/"));
+
+    // Then it errors (invalid enum value rejected).
+    assert!(
+        result.is_err(),
+        "sidecar with invalid derivatives value must error"
+    );
+}
+
+#[test]
+fn resolve_errors_on_sidecar_with_unknown_override_field() {
+    // Given a sidecar with a stale (removed) override field — proves
+    // deny_unknown_fields on Overrides holds through the resolver parse path.
+    let fs = FsService::new(Arc::new(FakeFs::with_files([
+        (Path::new("/x.glb"), ""),
+        (
+            Path::new("/x.glb.attr.toml"),
+            r#"title = "X"
+author = "A"
+year = 2020
+license = "CC0-1.0"
+source = "https://example.com"
+
+[overrides]
+allows_modifications = true
+"#,
+        ),
+    ])));
+
+    // When resolving.
+    let result = resolve(&fs, Path::new("/x.glb"), Path::new("/"));
+
+    // Then it errors (unknown override field rejected by deny_unknown_fields).
+    assert!(
+        result.is_err(),
+        "sidecar with unknown override field must error"
     );
 }
 
@@ -269,6 +329,37 @@ fn run_audit_propagates_walk_failure() {
     assert!(
         result.is_err(),
         "walk failure must propagate as audit error"
+    );
+}
+
+#[test]
+fn run_audit_propagates_build_excludes_error_without_panic() {
+    // Given a directly-constructed Config (bypassing load) with an invalid
+    // exclude glob — proves build_excludes is fallible, not a panic.
+    use auditah::audit::{run_audit, AuditCtx};
+    use auditah::config::Config;
+    let fs = FsService::new(Arc::new(FakeFs::default()));
+    let registry = LicenseRegistry::embedded_only();
+    let services = Services::from_parts(fs, registry);
+    let cfg = Config {
+        commercial_project: false,
+        redistributes_assets: false,
+        manual_review_acknowledged: Vec::new(),
+        exclude: vec!["**/[invalid".to_string()],
+    };
+    let ctx = AuditCtx {
+        services: &services,
+        config: &cfg,
+        root: Path::new("/proj"),
+    };
+
+    // When running the audit.
+    let result = run_audit(&ctx);
+
+    // Then the invalid-glob error propagates as Err (never panics).
+    assert!(
+        result.is_err(),
+        "build_excludes failure must propagate as audit error, not panic"
     );
 }
 
