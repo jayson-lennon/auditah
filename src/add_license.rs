@@ -37,11 +37,12 @@ pub fn license_ref_id(name: &str) -> String {
 /// Every `[terms]` field gets a `#` comment explaining what it means, and the
 /// header explains the `id` ↔ `LICENSES/<id>.txt` relationship so the user knows
 /// they must also drop the legal text alongside this grid. Defaults are the
-/// permissive baseline ("use however you want"); the user edits as needed.
+/// `default_fail()` baseline (maximally restrictive + `manual_review = true`):
+/// the grid FAILs audit until the user fills in the real terms AND acknowledges
 #[must_use]
 #[allow(clippy::unwrap_used)] // writeln! to a String is infallible
 pub fn render_license_template(id: &str) -> String {
-    let terms = LicenseTerms::permissive();
+    let terms = LicenseTerms::default_fail();
     let mut s = String::new();
 
     write_header(&mut s, id);
@@ -96,7 +97,7 @@ fn write_header(s: &mut String, id: &str) {
     writeln!(s, "#").unwrap();
     writeln!(
         s,
-        "# with the complete license text, then fill out the fields below."
+        "# with the complete license text. This grid FAILs audit until you fill in the real `[terms]` below AND add the id to `manual_review_acknowledged`."
     )
     .unwrap();
     writeln!(s).unwrap();

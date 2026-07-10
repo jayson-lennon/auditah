@@ -92,6 +92,29 @@ impl LicenseTerms {
         self.derivatives = d;
         self
     }
+
+    /// Maximal fail-closed baseline: the "nothing granted until you engage" shape.
+    ///
+    /// Used as the default for both `add-license --custom` (a custom license whose
+    /// grid the user must fill in) and the placeholder grid written when a
+    /// well-known license has no authored grid yet. Every permission is false,
+    /// every obligation except `manual_review` is false, derivatives are
+    /// disallowed, and `manual_review = true` FAILs the audit until the user
+    /// both fills in the real terms and acknowledges the id. This guarantees
+    /// no scaffolded license can pass audit by accident.
+    #[must_use]
+    pub fn default_fail() -> Self {
+        Self {
+            requires_attribution: false,
+            requires_license_notice: false,
+            requires_source_disclosure: false,
+            derivatives: Derivatives::Disallowed,
+            requires_modification_notice: false,
+            allows_commercial_use: false,
+            allows_redistribution: false,
+            manual_review: true,
+        }
+    }
 }
 
 /// Per-asset term overrides. All fields optional — only set fields replace
@@ -326,5 +349,22 @@ mod tests {
 
         // Then parsing fails — the enum replaces the old bool.
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn default_fail_is_maximally_restrictive_and_manual_review() {
+        // Given default_fail().
+        let terms = LicenseTerms::default_fail();
+
+        // When inspecting every field.
+        // Then every permission/obligation is false except manual_review, and derivatives are disallowed.
+        assert!(!terms.requires_attribution);
+        assert!(!terms.requires_license_notice);
+        assert!(!terms.requires_source_disclosure);
+        assert_eq!(terms.derivatives, Derivatives::Disallowed);
+        assert!(!terms.requires_modification_notice);
+        assert!(!terms.allows_commercial_use);
+        assert!(!terms.allows_redistribution);
+        assert!(terms.manual_review);
     }
 }
