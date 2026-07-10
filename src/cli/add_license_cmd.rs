@@ -1,23 +1,37 @@
-//! `auditah add-license` — scaffold a license grid in `LICENSES/`.
+//! `auditah add-license` — scaffold a license grid (+ text for well-known ids).
 
 use std::path::PathBuf;
 
-use crate::add_license::write_license_template;
+use crate::add_license::{grid_id_from_path, write_grid, write_license_template, write_text};
 use crate::services::Services;
+use crate::well_known::{self, ResolveResult};
 use crate::AppError;
 use clap::Args;
 use error_stack::{Report, ResultExt};
 
 use super::CommandStatus;
 
-/// Scaffold a `<root>/LICENSES/LicenseRef-<name>.toml` license grid with
-/// permissive defaults and a comment on every field. Non-interactive; refuses
-/// to overwrite an existing file.
+/// Scaffold a license grid (`.toml`) — and for well-known SPDX ids, the license
+/// text (`.txt`) — in `<root>/LICENSES/`.
+///
+/// Without `--custom`: sources from the embedded well-known SPDX corpus.
+/// `add-license MIT` extracts canonical `MIT.txt` + the authored `MIT.toml` grid.
+/// If a grid isn't authored for that id, a `default_fail()` placeholder grid is
+/// written and a warning is printed (the text is still extracted).
+///
+/// With `--custom`: writes a `LicenseRef-<name>` grid using `default_fail()`
+/// defaults; refuses if `<name>` collides with a well-known SPDX id (case-
+/// insensitive).
 #[derive(Debug, Args)]
 pub struct AddLicenseCmd {
-    /// License name. Prefixed with `LicenseRef-` if not already (e.g. `Foo`
-    /// becomes `LicenseRef-Foo`).
+    /// License name. Either a well-known SPDX id (e.g. `MIT`, no flag) or a custom
+    /// name (with `--custom`, prefixed as `LicenseRef-<name>`).
     pub name: String,
+
+    /// Create a custom `LicenseRef-<name>` license instead of sourcing from the
+    /// well-known SPDX corpus.
+    #[arg(long)]
+    pub custom: bool,
 
     /// Project root containing `LICENSES/`. Defaults to the current directory.
     #[arg(long, default_value = ".")]
@@ -28,11 +42,75 @@ pub struct AddLicenseCmd {
 ///
 /// # Errors
 ///
-/// Returns an error if services fail or the template write fails (e.g. the file
-/// already exists, or the write fails).
+/// Returns an error if services fail, the name doesn't resolve (unknown or
+/// ambiguous SPDX id), a `--custom` name collides with a well-known id, or a
+/// target file already exists.
 pub fn run(cmd: &AddLicenseCmd) -> Result<CommandStatus, Report<AppError>> {
     let services = Services::real(&cmd.root).change_context(AppError)?;
-    let path = write_license_template(&services, &cmd.root, &cmd.name).change_context(AppError)?;
-    println!("add-license: wrote {}", path.display());
-    Ok(CommandStatus::Success)
+
+    if cmd.custom {
+        // Refuse if the custom name collides with a well-known id (case-insensitive).
+        if let ResolveResult::Found(_) | ResolveResult::Ambiguous(_) =
+            well_known::resolve(&cmd.name)
+        {
+            return Err(Report::new(AppError).attach(format!(
+                "{:?} is a known SPDX id; use `add-license {}` (without --custom) to source it from the corpus",
+                cmd.name, cmd.name
+            )));
+        }
+        let path =
+            write_license_template(&services, &cmd.root, &cmd.name).change_context(AppError)?;
+        let id = grid_id_from_path(&path, &cmd.name);
+        eprintln!(
+            "warning: wrote default_fail() grid for {name:?} (manual_review = true). \
+             Fill in LICENSES/{id}.toml and add the id to `manual_review_acknowledged` \
+             when ready.",
+            name = cmd.name,
+            id = id,
+        );
+        println!("add-license: wrote {}", path.display());
+        return Ok(CommandStatus::Success);
+    }
+
+    // Well-known path.
+    match well_known::resolve(&cmd.name) {
+        ResolveResult::NotFound => Err(Report::new(AppError).attach(format!(
+            "unknown SPDX id {:?}; use `--custom` to create a custom (LicenseRef-) license",
+            cmd.name
+        ))),
+        ResolveResult::Ambiguous(cands) => Err(Report::new(AppError)
+            .attach(format!("ambiguous SPDX id {:?}", cmd.name))
+            .attach(format!("candidates: {}", cands.join(", ")))),
+        ResolveResult::Found(canonical) => {
+            // Always extract the canonical text.
+            let text = well_known::extract_text(&canonical);
+            let text_path =
+                write_text(&services, &cmd.root, &canonical, &text).change_context(AppError)?;
+
+            // Authored grid if present, else default_fail() placeholder + warning.
+            let (grid_content, placeholder) = match well_known::extract_grid(&canonical) {
+                Some(g) => (g, false),
+                None => (
+                    crate::add_license::render_license_template(&canonical),
+                    true,
+                ),
+            };
+            let grid_path = write_grid(&services, &cmd.root, &canonical, &grid_content)
+                .change_context(AppError)?;
+
+            if placeholder {
+                eprintln!(
+                    "warning: no authored grid for {canonical} — wrote a default_fail() \
+                     placeholder (manual_review = true). Fill in LICENSES/{canonical}.toml \
+                     and add the id to `manual_review_acknowledged` when ready."
+                );
+            }
+            println!(
+                "add-license: wrote {} , {}",
+                text_path.display(),
+                grid_path.display()
+            );
+            Ok(CommandStatus::Success)
+        }
+    }
 }

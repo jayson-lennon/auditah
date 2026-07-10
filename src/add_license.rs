@@ -224,17 +224,77 @@ pub fn write_license_template(
     name: &str,
 ) -> Result<PathBuf, Report<AddLicenseError>> {
     let id = license_ref_id(name);
-    let path = license_grid_path(root, &id);
+    let content = render_license_template(&id);
+    write_grid(services, root, &id, &content)
+}
+
+/// Derive the license id from a written grid path, falling back to `fallback`
+/// if the path has no file name. Used by `add-license --custom` to recover the id
+/// (which is `LicenseRef-<name>`) for the warning message.
+#[must_use]
+pub fn grid_id_from_path(path: &Path, fallback: &str) -> String {
+    path.file_name().and_then(|f| f.to_str()).map_or_else(
+        || fallback.to_string(),
+        |f| f.trim_end_matches(".toml").to_string(),
+    )
+}
+
+/// Compute the on-disk path for a license text: `<root>/LICENSES/<id>.txt`.
+#[must_use]
+pub fn license_text_path(root: &Path, id: &str) -> PathBuf {
+    root.join("LICENSES").join(format!("{id}.txt"))
+}
+
+/// Write arbitrary grid content to `<root>/LICENSES/<id>.toml`.
+///
+/// Refuses to overwrite an existing file.
+///
+/// # Errors
+///
+/// Returns `AddLicenseError` if the target file already exists or writing fails.
+pub fn write_grid(
+    services: &Services,
+    root: &Path,
+    id: &str,
+    content: &str,
+) -> Result<PathBuf, Report<AddLicenseError>> {
+    let path = license_grid_path(root, id);
     if path.exists() {
         return Err(Report::new(AddLicenseError)
             .attach("license grid already exists; edit it directly or remove it first")
             .attach(path.display().to_string()));
     }
-    let content = render_license_template(&id);
     services
         .fs
-        .write(&path, &content)
+        .write(&path, content)
         .change_context(AddLicenseError)
         .attach("failed to write license grid")?;
+    Ok(path)
+}
+
+/// Write license text to `<root>/LICENSES/<id>.txt`.
+///
+/// Refuses to overwrite an existing file.
+///
+/// # Errors
+///
+/// Returns `AddLicenseError` if the target file already exists or writing fails.
+pub fn write_text(
+    services: &Services,
+    root: &Path,
+    id: &str,
+    content: &str,
+) -> Result<PathBuf, Report<AddLicenseError>> {
+    let path = license_text_path(root, id);
+    if path.exists() {
+        return Err(Report::new(AddLicenseError)
+            .attach("license text already exists; remove it first to re-extract")
+            .attach(path.display().to_string()));
+    }
+    services
+        .fs
+        .write(&path, content)
+        .change_context(AddLicenseError)
+        .attach("failed to write license text")?;
     Ok(path)
 }
