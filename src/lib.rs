@@ -15,6 +15,10 @@ pub mod model;
 pub mod registry;
 pub mod services;
 
+#[cfg(feature = "test-helper")]
+#[doc(hidden)]
+pub mod test_support;
+
 /// An application error occurred
 #[derive(Debug, Error)]
 #[error(debug)]

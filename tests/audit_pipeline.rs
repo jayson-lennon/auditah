@@ -2,52 +2,13 @@
 //! real temp filesystem. One BDD test per behavior, mapped to the plan's test
 //! cases table.
 
-use std::sync::Arc;
-
-use auditah::audit::report::{AuditReport, FindingCode, Severity};
+use auditah::audit::report::{FindingCode, Severity};
 use auditah::audit::{run_audit, AuditCtx};
 use auditah::config::Config;
-use auditah::registry::LicenseRegistry;
-use auditah::services::fs::{FsService, RealFs};
-use auditah::services::Services;
 use temptree::temptree;
 
-/// Build a real-filesystem Services container with the embedded license
-/// registry (no project-local licenses in these scenarios).
-fn services() -> Services {
-    Services {
-        fs: FsService::new(Arc::new(RealFs::new())),
-        registry: LicenseRegistry::embedded_only(),
-    }
-}
-
-/// Seed `LICENSES/<id>.txt` for every embedded license so audit's
-/// `MissingLicenseText` check passes in these pass-clean scenarios.
-fn seed_licenses(root: &std::path::Path) {
-    let reg = LicenseRegistry::embedded_only();
-    let dir = root.join("LICENSES");
-    std::fs::create_dir_all(&dir).unwrap();
-    for entry in reg.entries() {
-        std::fs::write(dir.join(format!("{}.txt", entry.id)), &entry.text).unwrap();
-    }
-}
-
-fn non_commercial_config() -> Config {
-    Config {
-        commercial_project: false,
-        exclude: Vec::new(),
-    }
-}
-
-/// Collect the finding codes for assets whose name contains `needle`.
-fn codes_for(report: &AuditReport, needle: &str) -> Vec<FindingCode> {
-    report
-        .findings
-        .iter()
-        .filter(|f| f.asset.to_string_lossy().contains(needle))
-        .map(|f| f.code)
-        .collect()
-}
+mod common;
+use common::{codes_for, non_commercial_config, seed_licenses, services};
 
 // Test case 1: uncovered asset → FAIL UnlicensedAsset.
 #[test]

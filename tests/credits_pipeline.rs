@@ -1,28 +1,14 @@
 //! Integration tests: the `credits` pipeline end-to-end against a real temp fs.
 //! Asserts on the generated CREDITS.md content (the public contract).
 
-use std::sync::Arc;
-
 use auditah::config::Config;
 use auditah::credits::{generate_credits, CreditsCtx};
-use auditah::registry::LicenseRegistry;
-use auditah::services::fs::{FsService, RealFs};
 use auditah::services::Services;
 use temptree::temptree;
 
-fn services() -> Services {
-    Services {
-        fs: FsService::new(Arc::new(RealFs::new())),
-        registry: LicenseRegistry::embedded_only(),
-    }
-}
+mod common;
+use common::{non_commercial_config, services};
 
-fn non_commercial_config() -> Config {
-    Config {
-        commercial_project: false,
-        exclude: Vec::new(),
-    }
-}
 
 /// Generate credits to `<root>/CREDITS.md` and return the file contents.
 fn generated(ctx: &CreditsCtx) -> String {

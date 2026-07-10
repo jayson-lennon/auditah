@@ -3,39 +3,18 @@
 //! Covers the new obligation that every referenced license id must have a
 //! `LICENSES/<id>.txt` file on disk, and that `init-licenses` generates them.
 
-use std::sync::Arc;
-
-use auditah::audit::report::{AuditReport, FindingCode, Severity};
+use auditah::audit::report::{FindingCode, Severity};
 use auditah::audit::{run_audit, AuditCtx};
-use auditah::config::Config;
 use auditah::init_licenses::init_licenses;
+use temptree::temptree;
+
+mod common;
+use common::{codes_for, config, services};
 use auditah::registry::LicenseRegistry;
 use auditah::services::fs::{FsService, RealFs};
 use auditah::services::Services;
-use temptree::temptree;
+use std::sync::Arc;
 
-fn services() -> Services {
-    Services {
-        fs: FsService::new(Arc::new(RealFs::new())),
-        registry: LicenseRegistry::embedded_only(),
-    }
-}
-
-fn config() -> Config {
-    Config {
-        commercial_project: false,
-        exclude: Vec::new(),
-    }
-}
-
-fn codes_for(report: &AuditReport, needle: &str) -> Vec<FindingCode> {
-    report
-        .findings
-        .iter()
-        .filter(|f| f.asset.to_string_lossy().contains(needle))
-        .map(|f| f.code)
-        .collect()
-}
 
 // A covered CC-BY asset with no LICENSES/ directory → FAIL MissingLicenseText.
 #[test]

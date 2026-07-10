@@ -1,55 +1,13 @@
 //! Integration tests: `add` and `init-pack` produce files that round-trip
 //! through the audit pipeline cleanly.
 
-use std::sync::Arc;
-
 use auditah::add::{render_record, write_manifest, write_sidecar};
 use auditah::audit::{run_audit, AuditCtx};
-use auditah::config::Config;
 use auditah::model::attribution::AttributionRecord;
-use auditah::model::terms::Overrides;
-use auditah::registry::LicenseRegistry;
-use auditah::services::fs::{FsService, RealFs};
-use auditah::services::Services;
 use temptree::temptree;
 
-fn services() -> Services {
-    Services {
-        fs: FsService::new(Arc::new(RealFs::new())),
-        registry: LicenseRegistry::embedded_only(),
-    }
-}
-
-/// Seed `LICENSES/<id>.txt` for every embedded license so audit's
-/// `MissingLicenseText` check passes in these round-trip scenarios.
-fn seed_licenses(root: &std::path::Path) {
-    let reg = LicenseRegistry::embedded_only();
-    let dir = root.join("LICENSES");
-    std::fs::create_dir_all(&dir).unwrap();
-    for entry in reg.entries() {
-        std::fs::write(dir.join(format!("{}.txt", entry.id)), &entry.text).unwrap();
-    }
-}
-
-fn cfg() -> Config {
-    Config {
-        commercial_project: false,
-        exclude: Vec::new(),
-    }
-}
-
-fn record(license: &str) -> AttributionRecord {
-    AttributionRecord {
-        title: "Sample".to_string(),
-        author: "Artist".to_string(),
-        year: 2020,
-        license: license.to_string(),
-        source: "https://example.com".to_string(),
-        modified: false,
-        package: None,
-        overrides: Overrides::default(),
-    }
-}
+mod common;
+use common::{cfg, record, seed_licenses, services};
 
 // `add` writes a sidecar that audit then accepts as covered.
 #[test]

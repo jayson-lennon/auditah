@@ -166,37 +166,8 @@ fn strip_sidecar_suffix(sidecar: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::fs::{FsBackend, FsError};
-    use parking_lot::Mutex;
-    use std::{collections::HashMap, sync::Arc};
-
-    struct FakeFs {
-        files: Mutex<HashMap<PathBuf, String>>,
-    }
-    impl FsBackend for FakeFs {
-        fn read_to_string(&self, p: &Path) -> Result<String, Report<FsError>> {
-            self.files
-                .lock()
-                .get(p)
-                .cloned()
-                .ok_or_else(|| Report::new(FsError))
-        }
-        fn write(&self, _p: &Path, _c: &str) -> Result<(), Report<FsError>> {
-            Ok(())
-        }
-        fn list_dir(&self, _p: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
-            Ok(Vec::new())
-        }
-        fn walk(&self, _root: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
-            Ok(self.files.lock().keys().cloned().collect())
-        }
-        fn exists(&self, p: &Path) -> bool {
-            self.files.lock().contains_key(p) || p.exists()
-        }
-        fn name(&self) -> &'static str {
-            "FakeFs"
-        }
-    }
+    use crate::test_support::FakeFs;
+    use std::sync::Arc;
 
     fn fake_record_toml(license: &str) -> String {
         format!(
@@ -210,13 +181,9 @@ source = "https://example.com"
     }
 
     fn fs_with(files: &[(&str, &str)]) -> FsService {
-        let mut map = HashMap::new();
-        for (k, v) in files {
-            map.insert(PathBuf::from(k), (*v).to_string());
-        }
-        FsService::new(Arc::new(FakeFs {
-            files: Mutex::new(map),
-        }))
+        FsService::new(Arc::new(FakeFs::with_files(
+            files.iter().map(|(p, c)| (*p, *c)),
+        )))
     }
 
     #[test]
