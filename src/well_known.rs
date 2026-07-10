@@ -99,23 +99,34 @@ pub(crate) fn resolve(name: &str) -> ResolveResult {
 }
 
 /// Read the authored grid TOML for a canonical id, if present in the corpus.
-#[allow(dead_code)] // consumed by Phase 5
 pub(crate) fn grid_for(canonical: &str) -> Option<String> {
     read_entry(&format!("{canonical}.toml"))
 }
 
 /// Extract the canonical license text for a canonical id. Panics if missing
 /// (callers only invoke this after a successful [`resolve`]).
-#[allow(dead_code)] // consumed by Phase 5
 pub(crate) fn extract_text(canonical: &str) -> String {
     read_entry(&format!("{canonical}.txt"))
         .unwrap_or_else(|| panic!("extract_text called for '{canonical}' with no .txt in corpus"))
 }
 
 /// Extract the authored grid TOML for a canonical id, if present.
-#[allow(dead_code)] // consumed by Phase 5
 pub(crate) fn extract_grid(canonical: &str) -> Option<String> {
     grid_for(canonical)
+}
+
+/// Iterate the canonical ids of all authored grids present in the corpus.
+/// Used by the registry to seed well-known entries at startup.
+pub(crate) fn authored_grid_ids() -> Vec<String> {
+    let mut zip = archive();
+    let mut ids = Vec::new();
+    for i in 0..zip.len() {
+        let Ok(entry) = zip.by_index(i) else { continue };
+        if let Some(stem) = entry.name().strip_suffix(".toml") {
+            ids.push(stem.to_string());
+        }
+    }
+    ids
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
