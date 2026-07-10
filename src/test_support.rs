@@ -191,25 +191,26 @@ impl FsBackend for FakeFs {
 mod tests {
     use super::*;
 
-    // Given a fake seeded with a nested file tree.
-    // When listing a directory.
-    // Then only immediate children are returned.
     #[test]
     fn list_dir_returns_immediate_children_only() {
+        // Given a fake seeded with a nested file tree.
         let fs = FakeFs::with_files([
             (Path::new("/proj/a.txt"), "1"),
             (Path::new("/proj/b.txt"), "2"),
             (Path::new("/proj/sub/c.txt"), "3"),
             (Path::new("/proj/sub/deep/d.txt"), "4"),
         ]);
+
+        // When listing the directory.
         let children = fs.list_dir(Path::new("/proj")).unwrap();
         let names: Vec<String> = children
             .iter()
             .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
             .collect();
+
+        // Then only immediate children are returned (nested files excluded).
         assert!(names.contains(&"a.txt".to_string()));
         assert!(names.contains(&"b.txt".to_string()));
-        // sub/ contents are not immediate children of /proj.
         assert!(
             !children
                 .iter()
@@ -218,66 +219,75 @@ mod tests {
         );
     }
 
-    // Given a fake seeded with a nested file tree.
-    // When walking the root.
-    // Then every file recursively under the root is returned.
     #[test]
     fn walk_returns_all_files_recursively() {
+        // Given a fake seeded with a nested file tree.
         let fs = FakeFs::with_files([
             (Path::new("/proj/a.txt"), "1"),
             (Path::new("/proj/sub/b.txt"), "2"),
             (Path::new("/proj/sub/deep/c.txt"), "3"),
             (Path::new("/other/x.txt"), "4"),
         ]);
+
+        // When walking the root.
         let files = fs.walk(Path::new("/proj")).unwrap();
+
+        // Then every file recursively under the root is returned (others excluded).
         assert_eq!(files.len(), 3, "only files under /proj");
-        assert!(!files.iter().any(|p| p.to_string_lossy().contains("/other/")));
+        assert!(!files
+            .iter()
+            .any(|p| p.to_string_lossy().contains("/other/")));
     }
 
-    // Given a fake with a registered read failure.
-    // When reading that path.
-    // Then the operation errors.
     #[test]
     fn fail_read_injects_error() {
+        // Given a fake with a registered read failure.
         let fs = FakeFs::with_files([(Path::new("/x"), "data")]).fail_read(Path::new("/x"));
+
+        // When reading that path.
+        // Then the operation errors.
         assert!(fs.read_to_string(Path::new("/x")).is_err());
     }
 
-    // Given a fake with a registered write failure.
-    // When writing that path.
-    // Then the operation errors and no file is stored.
     #[test]
     fn fail_write_injects_error_and_does_not_store() {
+        // Given a fake with a registered write failure.
         let fs = FakeFs::default().fail_write(Path::new("/out"));
+
+        // When writing that path.
         assert!(fs.write(Path::new("/out"), "x").is_err());
+
+        // Then the operation errors and no file is stored.
         assert!(!fs.exists(Path::new("/out")));
     }
 
-    // Given a fake with a registered walk failure on a root.
-    // When walking that root.
-    // Then the operation errors.
     #[test]
     fn fail_walk_injects_error() {
+        // Given a fake with a registered walk failure on a root.
         let fs = FakeFs::default().fail_walk(Path::new("/proj"));
+
+        // When walking that root.
+        // Then the operation errors.
         assert!(fs.walk(Path::new("/proj")).is_err());
     }
 
-    // Given a fake with a registered list_dir failure.
-    // When listing that directory.
-    // Then the operation errors.
     #[test]
     fn fail_list_dir_injects_error() {
+        // Given a fake with a registered list_dir failure.
         let fs = FakeFs::default().fail_list_dir(Path::new("/proj"));
+
+        // When listing that directory.
+        // Then the operation errors.
         assert!(fs.list_dir(Path::new("/proj")).is_err());
     }
-    // Given a fake with a file nested under a directory path.
-    // When checking whether the directory path exists.
-    // Then it returns true (implicit directory).
     #[test]
     fn exists_returns_true_for_implicit_directory() {
+        // Given a fake with a file nested under a directory path.
         let fs = FakeFs::with_files([(Path::new("/proj/sub/a.txt"), "x")]);
+
+        // When checking whether the directory path exists.
+        // Then it returns true for both the parent and nested directories.
         assert!(fs.exists(Path::new("/proj")));
         assert!(fs.exists(Path::new("/proj/sub")));
     }
-
 }

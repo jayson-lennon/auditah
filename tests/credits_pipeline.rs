@@ -9,7 +9,6 @@ use temptree::temptree;
 mod common;
 use common::{non_commercial_config, services};
 
-
 /// Generate credits to `<root>/CREDITS.md` and return the file contents.
 fn generated(ctx: &CreditsCtx) -> String {
     let root = ctx.root;

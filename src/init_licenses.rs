@@ -103,11 +103,15 @@ mod tests {
 
     #[test]
     fn writes_all_embedded_licenses() {
+        // Given an empty project and the embedded registry.
         let fs = FsService::new(Arc::new(FakeFs::default()));
         let registry = LicenseRegistry::embedded_only();
         let services = Services::from_parts(fs.clone(), registry);
+
+        // When running init-licenses.
         let outcome = init_licenses(&services, Path::new("/proj")).unwrap();
-        // CC0, CC-BY-3.0, MIT, OFL-1.1 — all seeded with text.
+
+        // Then all four embedded licenses are written (none skipped).
         assert_eq!(outcome.written, 4);
         assert_eq!(outcome.skipped, 0);
         for id in ["CC0-1.0", "CC-BY-3.0", "MIT", "OFL-1.1"] {
@@ -118,23 +122,27 @@ mod tests {
 
     #[test]
     fn skips_files_with_matching_content() {
+        // Given a project where LICENSES/MIT.txt already matches the embedded text.
         let fs = FsService::new(Arc::new(FakeFs::default()));
-        // Pre-seed MIT with its embedded text.
         let reg = LicenseRegistry::embedded_only();
         let mit_text = reg.get("MIT").unwrap().text.clone();
         fs.write(&PathBuf::from("/proj/LICENSES/MIT.txt"), &mit_text)
             .unwrap();
         let registry = LicenseRegistry::embedded_only();
         let services = Services::from_parts(fs.clone(), registry);
+
+        // When running init-licenses.
         let outcome = init_licenses(&services, Path::new("/proj")).unwrap();
+
+        // Then MIT is skipped (matches) and the other three are written.
         assert_eq!(outcome.skipped, 1, "MIT already matches");
         assert_eq!(outcome.written, 3, "other three written");
     }
 
     #[test]
     fn errors_when_existing_file_diverges() {
+        // Given a project where LICENSES/MIT.txt diverges from the embedded text.
         let fs = FsService::new(Arc::new(FakeFs::default()));
-        // Pre-seed MIT with divergent (human-edited) text.
         fs.write(
             &PathBuf::from("/proj/LICENSES/MIT.txt"),
             "human-edited version",
@@ -142,7 +150,11 @@ mod tests {
         .unwrap();
         let registry = LicenseRegistry::embedded_only();
         let services = Services::from_parts(fs, registry);
+
+        // When running init-licenses.
         let result = init_licenses(&services, Path::new("/proj"));
+
+        // Then it errors rather than clobbering the divergent file.
         assert!(result.is_err(), "divergent file must error, not clobber");
     }
 }

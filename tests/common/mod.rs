@@ -48,7 +48,6 @@ pub fn non_commercial_config() -> Config {
     }
 }
 
-
 /// Alias for [`non_commercial_config`] (shorter name used by some tests).
 #[must_use]
 pub fn cfg() -> Config {
@@ -94,7 +93,6 @@ pub fn record(license: &str) -> AttributionRecord {
         package: None,
         overrides: Overrides::default(),
     }
-
 }
 
 use auditah::discovery::enumerator::ExcludeMatcher;

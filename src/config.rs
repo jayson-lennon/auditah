@@ -65,21 +65,32 @@ mod tests {
 
     #[test]
     fn missing_config_returns_default() {
+        // Given a project with no auditah.toml.
         let fs = fs_with(&[]);
+
+        // When loading the config.
         let cfg = Config::load(&fs, Path::new("/proj")).unwrap();
+
+        // Then defaults are used (non-commercial, no excludes).
         assert!(!cfg.commercial_project);
         assert!(cfg.exclude.is_empty());
     }
 
     #[test]
     fn commercial_flag_parses() {
+        // Given a config with commercial_project = true.
         let fs = fs_with(&[("/proj/auditah.toml", "commercial_project = true\n")]);
+
+        // When loading the config.
         let cfg = Config::load(&fs, Path::new("/proj")).unwrap();
+
+        // Then the commercial flag is true.
         assert!(cfg.commercial_project);
     }
 
     #[test]
     fn exclude_globs_parse() {
+        // Given a config with exclude globs.
         let fs = fs_with(&[(
             "/proj/auditah.toml",
             r#"
@@ -87,13 +98,23 @@ commercial_project = false
 exclude = ["vendor/**", "*.bak"]
 "#,
         )]);
+
+        // When loading the config.
         let cfg = Config::load(&fs, Path::new("/proj")).unwrap();
+
+        // Then the exclude globs parse into the expected vec.
         assert_eq!(cfg.exclude, vec!["vendor/**", "*.bak"]);
     }
 
     #[test]
     fn malformed_config_errors() {
+        // Given a malformed auditah.toml.
         let fs = fs_with(&[("/proj/auditah.toml", "this is not = = valid toml")]);
-        assert!(Config::load(&fs, Path::new("/proj")).is_err());
+
+        // When loading the config.
+        let result = Config::load(&fs, Path::new("/proj"));
+
+        // Then loading returns an error.
+        assert!(result.is_err());
     }
 }

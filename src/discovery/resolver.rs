@@ -188,48 +188,72 @@ source = "https://example.com"
 
     #[test]
     fn sidecar_path_appends_suffix() {
+        // Given an asset path.
+        // When computing the sidecar path.
         let p = sidecar_path(Path::new("/proj/sword.glb"));
+
+        // Then the .attr.toml suffix is appended.
         assert_eq!(p, PathBuf::from("/proj/sword.glb.attr.toml"));
     }
 
     #[test]
     fn sidecar_path_preserves_spaces_in_name() {
+        // Given an asset path containing spaces.
+        // When computing the sidecar path.
         let p = sidecar_path(Path::new("/proj/Gunny Sack.glb"));
+
+        // Then spaces are preserved in the sidecar path.
         assert_eq!(p, PathBuf::from("/proj/Gunny Sack.glb.attr.toml"));
     }
 
     #[test]
     fn resolve_returns_uncovered_when_no_config() {
+        // Given an asset with no sidecar and no manifest.
         let fs = fs_with(&[("/proj/sword.glb", "")]);
+
+        // When resolving.
         let r = resolve(&fs, Path::new("/proj/sword.glb"), Path::new("/proj")).unwrap();
+
+        // Then the source is None and no record is present.
         assert_eq!(r.source, ResolutionSource::None);
         assert!(r.record.is_none());
     }
 
     #[test]
     fn resolve_uses_sidecar_when_present() {
+        // Given an asset with a sidecar.
         let fs = fs_with(&[
             ("/proj/sword.glb", ""),
             ("/proj/sword.glb.attr.toml", &fake_record_toml("CC-BY-3.0")),
         ]);
+
+        // When resolving.
         let r = resolve(&fs, Path::new("/proj/sword.glb"), Path::new("/proj")).unwrap();
+
+        // Then the sidecar is used and its license is parsed.
         assert!(matches!(r.source, ResolutionSource::Sidecar(_)));
         assert_eq!(r.record.unwrap().license, "CC-BY-3.0");
     }
 
     #[test]
     fn resolve_uses_nearest_manifest_when_no_sidecar() {
+        // Given an asset with no sidecar but a directory manifest.
         let fs = fs_with(&[
             ("/proj/assets/sword.glb", ""),
             ("/proj/assets/manifest.toml", &fake_record_toml("CC0-1.0")),
         ]);
+
+        // When resolving.
         let r = resolve(&fs, Path::new("/proj/assets/sword.glb"), Path::new("/proj")).unwrap();
+
+        // Then the manifest is used and its license is parsed.
         assert!(matches!(r.source, ResolutionSource::Manifest(_)));
         assert_eq!(r.record.unwrap().license, "CC0-1.0");
     }
 
     #[test]
     fn subdir_manifest_overrides_parent_manifest() {
+        // Given a parent and subdir manifest with different licenses.
         let parent = fake_record_toml("CC0-1.0");
         let child = fake_record_toml("MIT");
         let fs = fs_with(&[
@@ -237,26 +261,35 @@ source = "https://example.com"
             ("/proj/sub/manifest.toml", &child),
             ("/proj/sub/sword.glb", ""),
         ]);
+
+        // When resolving the subdir asset.
         let r = resolve(&fs, Path::new("/proj/sub/sword.glb"), Path::new("/proj")).unwrap();
+
+        // Then the subdir manifest wins (nearest).
         assert!(matches!(r.source, ResolutionSource::Manifest(_)));
         assert_eq!(r.record.unwrap().license, "MIT");
     }
 
     #[test]
     fn sidecar_overrides_manifest_in_same_dir() {
+        // Given a dir with both a manifest and a per-file sidecar.
         let fs = fs_with(&[
             ("/proj/sword.glb", ""),
             ("/proj/sword.glb.attr.toml", &fake_record_toml("MIT")),
             ("/proj/manifest.toml", &fake_record_toml("CC0-1.0")),
         ]);
+
+        // When resolving.
         let r = resolve(&fs, Path::new("/proj/sword.glb"), Path::new("/proj")).unwrap();
+
+        // Then the sidecar wins over the manifest.
         assert!(matches!(r.source, ResolutionSource::Sidecar(_)));
         assert_eq!(r.record.unwrap().license, "MIT");
     }
 
     #[test]
     fn orphan_sidecar_detected_when_asset_missing() {
-        // real.glb exists; ghost.glb does not.
+        // Given a filesystem with a real asset+sidecar and an orphan sidecar.
         let fs = fs_with(&[
             ("/proj/real.glb", ""),
             ("/proj/real.glb.attr.toml", ""),
@@ -267,9 +300,11 @@ source = "https://example.com"
             PathBuf::from("/proj/real.glb"),
             PathBuf::from("/proj/real.glb.attr.toml"),
         ];
+
+        // When detecting orphan sidecars.
         let orphans = find_orphan_sidecars(&fs, &all);
-        // ghost.glb.attr.toml has no ghost.glb → orphan.
-        // real.glb.attr.toml has real.glb → not orphan.
+
+        // Then only the ghost sidecar is reported as orphan.
         assert_eq!(orphans.len(), 1);
         assert!(orphans[0].to_string_lossy().contains("ghost"));
     }

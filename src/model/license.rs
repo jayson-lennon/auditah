@@ -51,16 +51,23 @@ mod tests {
 
     #[test]
     fn entry_round_trips_through_toml() {
+        // Given a CC0 registry entry.
         let entry = cc0_entry();
+
+        // When serializing to TOML and parsing back.
         let toml_str = toml::to_string(&entry).unwrap();
         let parsed: LicenseRegistryEntry = toml::from_str(&toml_str).unwrap();
+
+        // Then the parsed entry equals the original.
         assert_eq!(parsed, entry);
     }
-
     #[test]
     fn notes_omitted_when_none() {
+        // Given a CC0 entry with no notes.
+        // When serializing to TOML.
         let toml_str = toml::to_string(&cc0_entry()).unwrap();
-        // skip_serializing_if should drop the notes key entirely.
+
+        // Then the notes key is omitted via skip_serializing_if.
         assert!(!toml_str.contains("notes"));
     }
 }

@@ -206,10 +206,7 @@ mod tests {
     #[test]
     fn walk_collects_only_files_excluding_directories() {
         // Given a fake filesystem with nested directories and files.
-        let fs = FakeFs::with_files([
-            ("root/a.glb", "bytes"),
-            ("root/sub/b.glb", "bytes"),
-        ]);
+        let fs = FakeFs::with_files([("root/a.glb", "bytes"), ("root/sub/b.glb", "bytes")]);
 
         // When walking root recursively.
         let mut got = fs

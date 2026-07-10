@@ -37,7 +37,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn minimal_record_round_trips_without_overrides_or_package() {
+    fn minimal_record_parses_without_overrides_or_package() {
+        // Given a minimal record TOML with no overrides or package.
         let toml = r#"
 title = "Gunny Sack"
 author = "Oliver Herklotz"
@@ -45,17 +46,21 @@ year = 2019
 license = "CC-BY-3.0"
 source = "https://poly.pizza/m/download/Gunny-Sack"
 "#;
+
+        // When parsing into an AttributionRecord.
         let record: AttributionRecord = toml::from_str(toml).unwrap();
+
+        // Then all fields deserialize to their expected values.
         assert_eq!(record.title, "Gunny Sack");
         assert_eq!(record.year, 2019);
         assert!(!record.modified);
         assert!(record.package.is_none());
-        // Empty overrides block (all None) deserializes from absence.
         assert_eq!(record.overrides, Overrides::default());
     }
 
     #[test]
-    fn record_with_override_block_parses() {
+    fn record_with_override_block_parses_override_fields() {
+        // Given a record TOML with an overrides block.
         let toml = r#"
 title = "Pack Item"
 author = "Author"
@@ -67,7 +72,11 @@ modified = true
 [overrides]
 allows_commercial_use = false
 "#;
+
+        // When parsing into an AttributionRecord.
         let record: AttributionRecord = toml::from_str(toml).unwrap();
+
+        // Then the modified flag and override fields parse correctly.
         assert!(record.modified);
         assert_eq!(record.overrides.allows_commercial_use, Some(false));
         assert_eq!(record.overrides.requires_attribution, None);
