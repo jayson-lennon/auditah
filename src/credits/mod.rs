@@ -123,20 +123,23 @@ fn sort_entries(by_author: &mut BTreeMap<String, Vec<CreditEntry>>) {
 /// Render the collected credits as a CREDITS.md string.
 #[must_use]
 pub(crate) fn render_credits(by_author: &BTreeMap<String, Vec<CreditEntry>>) -> String {
+    use std::fmt::Write;
+
     let mut out = String::from("# Credits\n\n");
     if by_author.is_empty() {
         out.push_str("_No attribution-required assets found._\n");
         return out;
     }
     for (author, entries) in by_author {
-        out.push_str(&format!("## {author}\n\n"));
+        let _ = write!(out, "## {author}\n\n");
         for e in entries {
-            out.push_str(&format!(
+            let _ = write!(
+                out,
                 "- **{}** ({}), {} — [source]({})",
                 e.title, e.license, e.year, e.source
-            ));
+            );
             if let Some(notice) = &e.modified_notice {
-                out.push_str(&format!(" {notice}"));
+                let _ = write!(out, " {notice}");
             }
             out.push('\n');
         }

@@ -4,12 +4,14 @@
 //! See `.plans/auditah/plan.md` for the full specification.
 
 mod cli;
+use auditah::AppError;
 use clap::{Parser, Subcommand};
 
 use cli::{
     add_cmd::AddCmd, audit_cmd::AuditCmd, credits_cmd::CreditsCmd,
     init_licenses_cmd::InitLicensesCmd, init_pack_cmd::InitPackCmd,
 };
+use error_stack::Report;
 
 /// Top-level CLI.
 #[derive(Debug, Parser)]
@@ -33,14 +35,13 @@ enum Command {
     InitPack(InitPackCmd),
 }
 
-fn main() {
+fn main() -> Result<(), Report<AppError>> {
     let cli = Cli::parse();
-    let exit_code = match cli.command {
+    match cli.command {
         Command::Audit(cmd) => cli::audit_cmd::run(&cmd),
         Command::Credits(cmd) => cli::credits_cmd::run(&cmd),
         Command::Add(cmd) => cli::add_cmd::run(&cmd),
         Command::InitLicenses(cmd) => cli::init_licenses_cmd::run(&cmd),
         Command::InitPack(cmd) => cli::init_pack_cmd::run(&cmd),
-    };
-    std::process::exit(exit_code);
+    }
 }

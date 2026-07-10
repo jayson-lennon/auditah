@@ -30,3 +30,6 @@ tempfile = "3"
 temptree = "0.2"
 rstest = "0.22"
 parking_lot = "0.12.5"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }

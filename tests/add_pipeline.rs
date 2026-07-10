@@ -7,6 +7,7 @@ use auditah::add::{render_record, write_manifest, write_sidecar};
 use auditah::audit::{run_audit, AuditCtx};
 use auditah::config::Config;
 use auditah::model::attribution::AttributionRecord;
+use auditah::model::terms::Overrides;
 use auditah::registry::LicenseRegistry;
 use auditah::services::fs::{FsService, RealFs};
 use auditah::services::Services;
@@ -20,7 +21,7 @@ fn services() -> Services {
 }
 
 /// Seed `LICENSES/<id>.txt` for every embedded license so audit's
-/// MissingLicenseText check passes in these round-trip scenarios.
+/// `MissingLicenseText` check passes in these round-trip scenarios.
 fn seed_licenses(root: &std::path::Path) {
     let reg = LicenseRegistry::embedded_only();
     let dir = root.join("LICENSES");
@@ -46,7 +47,7 @@ fn record(license: &str) -> AttributionRecord {
         source: "https://example.com".to_string(),
         modified: false,
         package: None,
-        overrides: Default::default(),
+        overrides: Overrides::default(),
     }
 }
 

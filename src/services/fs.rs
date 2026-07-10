@@ -164,7 +164,7 @@ impl FsBackend for RealFs {
             .into_iter()
             .filter_map(std::result::Result::ok)
             .filter(|e| e.file_type().is_file())
-            .map(|e| e.into_path())
+            .map(walkdir::DirEntry::into_path)
             .collect())
     }
 

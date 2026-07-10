@@ -22,7 +22,7 @@ fn services() -> Services {
 }
 
 /// Seed `LICENSES/<id>.txt` for every embedded license so audit's
-/// MissingLicenseText check passes in these pass-clean scenarios.
+/// `MissingLicenseText` check passes in these pass-clean scenarios.
 fn seed_licenses(root: &std::path::Path) {
     let reg = LicenseRegistry::embedded_only();
     let dir = root.join("LICENSES");

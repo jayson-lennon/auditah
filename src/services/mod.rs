@@ -4,11 +4,18 @@ pub mod fs;
 
 use std::{path::Path, sync::Arc};
 
+use error_stack::{Report, ResultExt};
 pub use fs::{FsBackend, FsError, FsService, RealFs};
 
 use derive_more::Debug;
+use wherror::Error;
 
 use crate::registry::LicenseRegistry;
+
+/// Error with the Services.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub struct ServicesError;
 
 /// Dependency-injection container. Constructed once in `main` (real backends)
 /// or in tests (fakes). Cheap to clone; every field is a service wrapper.
@@ -24,16 +31,19 @@ impl Services {
     /// Build the production service container backed by the real filesystem.
     ///
     /// Phase 2 will extend this to also load the license registry.
-    #[must_use]
-    pub fn real() -> Self {
-        Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Err` if the license registry fails to load (toml parse or read failure).
+    pub fn real() -> Result<Self, Report<ServicesError>> {
+        Ok(Self {
             fs: FsService::new(Arc::new(RealFs::new())),
             registry: LicenseRegistry::load(
                 &FsService::new(Arc::new(RealFs::new())),
                 Path::new("."),
             )
-            .expect("failed to load license registry"),
-        }
+            .change_context(ServicesError)?,
+        })
     }
 
     /// Build a service container from explicit parts. Used by tests and by

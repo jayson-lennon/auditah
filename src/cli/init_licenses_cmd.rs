@@ -4,8 +4,9 @@ use std::path::PathBuf;
 
 use clap::Args;
 
-use auditah::init_licenses::init_licenses;
 use auditah::services::Services;
+use auditah::{init_licenses::init_licenses, AppError};
+use error_stack::{Report, ResultExt};
 
 /// Write `LICENSES/<id>.txt` for every license in the registry.
 ///
@@ -20,21 +21,14 @@ pub struct InitLicensesCmd {
 }
 
 /// Run the init-licenses command. Returns the process exit code.
-pub fn run(cmd: &InitLicensesCmd) -> i32 {
-    let services = Services::real();
-    match init_licenses(&services, &cmd.root) {
-        Ok(outcome) => {
-            println!(
-                "init-licenses: wrote {} license text file(s) to {}/LICENSES (skipped {} already present)",
-                outcome.written,
-                cmd.root.display(),
-                outcome.skipped,
-            );
-            0
-        }
-        Err(e) => {
-            eprintln!("error: {e:?}");
-            2
-        }
-    }
+pub fn run(cmd: &InitLicensesCmd) -> Result<(), Report<AppError>> {
+    let services = Services::real().change_context(AppError)?;
+    let outcome = init_licenses(&services, &cmd.root).change_context(AppError)?;
+    println!(
+        "init-licenses: wrote {} license text file(s) to {}/LICENSES (skipped {} already present)",
+        outcome.written,
+        cmd.root.display(),
+        outcome.skipped,
+    );
+    Ok(())
 }
