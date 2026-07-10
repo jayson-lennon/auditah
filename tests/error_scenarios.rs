@@ -130,7 +130,10 @@ source = "https://example.com"
     let result = resolve(&fs, Path::new("/x.glb"), Path::new("/"));
 
     // Then it errors (missing required field rejected).
-    assert!(result.is_err(), "sidecar missing `license` field must error");
+    assert!(
+        result.is_err(),
+        "sidecar missing `license` field must error"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -140,7 +143,9 @@ source = "https://example.com"
 #[test]
 fn write_sidecar_errors_on_injected_write_failure() {
     // Given a Services whose FakeFs is set to fail writes to the sidecar path.
-    let fs = FsService::new(Arc::new(FakeFs::default().fail_write(Path::new("/x.glb.attr.toml"))));
+    let fs = FsService::new(Arc::new(
+        FakeFs::default().fail_write(Path::new("/x.glb.attr.toml")),
+    ));
     let registry = LicenseRegistry::embedded_only();
     let services = Services::from_parts(fs, registry);
     let rec = common::record("CC0-1.0");
@@ -149,25 +154,40 @@ fn write_sidecar_errors_on_injected_write_failure() {
     let result = auditah::add::write_sidecar(&services, Path::new("/x.glb"), &rec);
 
     // Then it errors (write failure propagated).
-    assert!(result.is_err(), "write_sidecar must propagate write failure");
+    assert!(
+        result.is_err(),
+        "write_sidecar must propagate write failure"
+    );
 }
 
 #[test]
 fn generate_credits_errors_on_injected_write_failure() {
     // Given a credits ctx whose FakeFs is set to fail writes to the output path.
-    use auditah::credits::{generate_credits, CreditsCtx};
     use auditah::config::Config;
-    let fs = FsService::new(Arc::new(FakeFs::default().fail_write(Path::new("/out/CREDITS.md"))));
+    use auditah::credits::{generate_credits, CreditsCtx};
+    let fs = FsService::new(Arc::new(
+        FakeFs::default().fail_write(Path::new("/out/CREDITS.md")),
+    ));
     let registry = LicenseRegistry::embedded_only();
     let services = Services::from_parts(fs, registry);
-    let cfg = Config { commercial_project: false, exclude: Vec::new() };
-    let ctx = CreditsCtx { services: &services, config: &cfg, root: Path::new("/") };
+    let cfg = Config {
+        commercial_project: false,
+        exclude: Vec::new(),
+    };
+    let ctx = CreditsCtx {
+        services: &services,
+        config: &cfg,
+        root: Path::new("/"),
+    };
 
     // When generating credits to the failing output path.
     let result = generate_credits(&ctx, Path::new("/out/CREDITS.md"));
 
     // Then it errors (write failure propagated).
-    assert!(result.is_err(), "generate_credits must propagate write failure");
+    assert!(
+        result.is_err(),
+        "generate_credits must propagate write failure"
+    );
 }
 
 #[test]
@@ -184,7 +204,10 @@ fn init_licenses_errors_on_injected_write_failure() {
     let result = init_licenses(&services, Path::new("/proj"));
 
     // Then it errors (write failure propagated).
-    assert!(result.is_err(), "init_licenses must propagate write failure");
+    assert!(
+        result.is_err(),
+        "init_licenses must propagate write failure"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -224,14 +247,24 @@ fn run_audit_propagates_walk_failure() {
     let fs = FsService::new(Arc::new(FakeFs::default().fail_walk(Path::new("/proj"))));
     let registry = LicenseRegistry::embedded_only();
     let services = Services::from_parts(fs, registry);
-    let cfg = Config { commercial_project: false, exclude: Vec::new() };
-    let ctx = AuditCtx { services: &services, config: &cfg, root: Path::new("/proj") };
+    let cfg = Config {
+        commercial_project: false,
+        exclude: Vec::new(),
+    };
+    let ctx = AuditCtx {
+        services: &services,
+        config: &cfg,
+        root: Path::new("/proj"),
+    };
 
     // When running the audit.
     let result = run_audit(&ctx);
 
     // Then the walk failure propagates as an error.
-    assert!(result.is_err(), "walk failure must propagate as audit error");
+    assert!(
+        result.is_err(),
+        "walk failure must propagate as audit error"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -253,7 +286,9 @@ source = "https://example.com"
     };
     let root = tree.path();
     common::seed_licenses(root);
-    let cmd = AuditCmd { root: root.to_path_buf() };
+    let cmd = AuditCmd {
+        root: root.to_path_buf(),
+    };
 
     // When running the audit command.
     let result = audit_run(&cmd);
@@ -272,7 +307,9 @@ fn audit_cmd_violations_returns_ok_compliance_failure() {
     };
     let root = tree.path();
     common::seed_licenses(root);
-    let cmd = AuditCmd { root: root.to_path_buf() };
+    let cmd = AuditCmd {
+        root: root.to_path_buf(),
+    };
 
     // When running the audit command.
     let result = audit_run(&cmd);
@@ -313,7 +350,9 @@ fn add_cmd_run_returns_err_on_write_failure() {
 #[test]
 fn audit_cmd_missing_root_returns_err_exit_two() {
     // Given a root path that does not exist.
-    let cmd = AuditCmd { root: std::path::PathBuf::from("/nonexistent/auditah/path/xyz") };
+    let cmd = AuditCmd {
+        root: std::path::PathBuf::from("/nonexistent/auditah/path/xyz"),
+    };
 
     // When running the audit command.
     let result = audit_run(&cmd);
@@ -327,8 +366,10 @@ fn audit_cmd_missing_root_returns_err_exit_two() {
 fn command_to_exit_code_maps_all_three_outcomes() {
     // Given the three possible command outcomes.
     let ok_success: Result<CommandStatus, Report<auditah::AppError>> = Ok(CommandStatus::Success);
-    let ok_fail: Result<CommandStatus, Report<auditah::AppError>> = Ok(CommandStatus::ComplianceFailure);
-    let err: Result<CommandStatus, Report<auditah::AppError>> = Err(Report::from(auditah::AppError));
+    let ok_fail: Result<CommandStatus, Report<auditah::AppError>> =
+        Ok(CommandStatus::ComplianceFailure);
+    let err: Result<CommandStatus, Report<auditah::AppError>> =
+        Err(Report::from(auditah::AppError));
 
     // When mapping to exit codes.
     // Then Success→0, ComplianceFailure→1, Err→2.
