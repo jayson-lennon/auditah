@@ -1,0 +1,14 @@
+id = "CC0-1.0"
+name = "Creative Commons Zero v1.0 Universal"
+url = "https://spdx.org/licenses/CC0-1.0.html"
+
+[terms]
+# CC0 is public-domain-equivalent: no obligations, all rights granted.
+requires_attribution = false
+requires_license_notice = false
+requires_source_disclosure = false
+derivatives = "allowed"
+requires_modification_notice = false
+allows_commercial_use = true
+allows_redistribution = true
+manual_review = false

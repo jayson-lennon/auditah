@@ -1,0 +1,13 @@
+id = "Apache-2.0"
+name = "Apache License 2.0"
+url = "https://spdx.org/licenses/Apache-2.0.html"
+
+[terms]
+requires_attribution = true
+requires_license_notice = true
+requires_source_disclosure = false
+derivatives = "allowed"
+requires_modification_notice = true
+allows_commercial_use = true
+allows_redistribution = true
+manual_review = false

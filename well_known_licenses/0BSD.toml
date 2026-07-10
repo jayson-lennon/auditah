@@ -1,0 +1,14 @@
+id = "0BSD"
+name = "Zero-Clause BSD / Free Public License 1.0.1"
+url = "https://spdx.org/licenses/0BSD.html"
+
+[terms]
+# 0BSD is public-domain-equivalent: no obligations at all, all rights granted.
+requires_attribution = false
+requires_license_notice = false
+requires_source_disclosure = false
+derivatives = "allowed"
+requires_modification_notice = false
+allows_commercial_use = true
+allows_redistribution = true
+manual_review = false

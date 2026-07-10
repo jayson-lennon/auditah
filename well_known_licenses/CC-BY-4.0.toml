@@ -1,0 +1,13 @@
+id = "CC-BY-4.0"
+name = "Creative Commons Attribution 4.0 International"
+url = "https://spdx.org/licenses/CC-BY-4.0.html"
+
+[terms]
+requires_attribution = true
+requires_license_notice = true
+requires_source_disclosure = false
+derivatives = "allowed"
+requires_modification_notice = false
+allows_commercial_use = true
+allows_redistribution = true
+manual_review = false
