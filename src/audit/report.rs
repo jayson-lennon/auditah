@@ -36,6 +36,8 @@ pub enum FindingCode {
     SourceDisclosureReview,
     /// `requires_license_notice` — human must confirm license text shipped.
     LicenseNoticeReview,
+    /// Referenced license id has no `LICENSES/<id>.txt` file on disk.
+    MissingLicenseText,
 }
 
 /// A single audit finding about one asset.
@@ -168,5 +170,16 @@ mod tests {
         assert_eq!(r.fail_count(), 2);
         assert_eq!(r.flag_count(), 1);
         assert!(r.has_failures());
+    }
+    #[test]
+    fn missing_license_text_is_a_fail() {
+        let mut r = AuditReport::default();
+        r.push(Finding::fail(
+            FindingCode::MissingLicenseText,
+            asset(),
+            "no LICENSES/MIT.txt",
+        ));
+        assert!(r.has_failures());
+        assert_eq!(r.fail_count(), 1);
     }
 }

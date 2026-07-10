@@ -23,8 +23,6 @@ auditah credits
 auditah add path/to/sword.glb
 
 # Cover an entire asset pack directory with one manifest.
-auditah init-pack path/to/pack --license CC0-1.0 --author Quaternius
-```
 
 ## Project config — `auditah.toml`
 
@@ -135,6 +133,7 @@ allows_commercial_use = false   # opt this asset out of commercial use
 | `requires_attribution` but missing title/author/source | **FAIL** — incomplete attribution |
 | `allows_commercial_use = false` and `commercial_project = true` | **FAIL** |
 | `allows_modifications = false` and `modified = true` | **FAIL** — no-derivatives |
+| Referenced license has no `LICENSES/<id>.txt` | **FAIL** — missing license text |
 | `requires_share_alike`, `requires_source_disclosure`, `requires_license_notice` | **FLAG** — needs human review |
 
 `audit` exits non-zero on any FAIL. FLAGs are reported but don't block.
@@ -146,6 +145,30 @@ project-local `licenses/` directory at the project root can override embedded
 entries (same id) or add new ones (e.g. `LicenseRef-StudioEULA`). Each license
 definition is a TOML file matching the `[terms]` shape above, plus `id`, `name`,
 `url`, and `text`.
+
+### `LICENSES/` directory and `init-licenses`
+
+Every license referenced by any asset must have a full-text file at
+`LICENSES/<id>.txt` (e.g. `LICENSES/MIT.txt`, `LICENSES/LicenseRef-StudioEULA.txt`).
+These are **required**, not optional — `audit` FAILs any referenced license whose
+text file is missing. The on-disk files are authoritative: you can edit them (e.g.
+trim a license's boilerplate) and auditah will respect your edits.
+
+```sh
+# Write LICENSES/<id>.txt for every license in the registry.
+# Idempotent: existing files with matching content are skipped. Divergent files
+# (human-edited) cause an error — on-disk text is never silently clobbered.
+auditah init-licenses
+```
+
+**Workflow for a custom / bespoke license:**
+
+1. Author the registry definition at `licenses/LicenseRef-StudioEULA.toml` (same
+   shape as above, with your full `text` inline).
+2. Run `auditah init-licenses` — it writes `LICENSES/LicenseRef-StudioEULA.txt`
+   from the `text` field of your `.toml`.
+3. Reference the license by id (`license = "LicenseRef-StudioEULA"`) in sidecars
+   and manifests. The text file is now present and audit passes.
 
 ## Building
 

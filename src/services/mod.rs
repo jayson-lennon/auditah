@@ -31,6 +31,13 @@ impl Services {
             .expect("failed to load license registry"),
         }
     }
+
+    /// Build a service container from explicit parts. Used by tests and by
+    /// callers that construct pieces independently (e.g. command runners).
+    #[must_use]
+    pub fn from_parts(fs: FsService, registry: crate::registry::LicenseRegistry) -> Self {
+        Self { fs, registry }
+    }
 }
 
 #[cfg(test)]

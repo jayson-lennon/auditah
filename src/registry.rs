@@ -358,6 +358,11 @@ impl LicenseRegistry {
         self.entries.get(id)
     }
 
+    /// Iterate over all registry entries.
+    pub fn entries(&self) -> impl Iterator<Item = &LicenseRegistryEntry> {
+        self.entries.values()
+    }
+
     /// Number of registered licenses (embedded + project-local).
     #[must_use]
     pub fn len(&self) -> usize {

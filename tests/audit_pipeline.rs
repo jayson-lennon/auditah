@@ -21,6 +21,17 @@ fn services() -> Services {
     }
 }
 
+/// Seed `LICENSES/<id>.txt` for every embedded license so audit's
+/// MissingLicenseText check passes in these pass-clean scenarios.
+fn seed_licenses(root: &std::path::Path) {
+    let reg = LicenseRegistry::embedded_only();
+    let dir = root.join("LICENSES");
+    std::fs::create_dir_all(&dir).unwrap();
+    for entry in reg.entries() {
+        std::fs::write(dir.join(format!("{}.txt", entry.id)), &entry.text).unwrap();
+    }
+}
+
 fn non_commercial_config() -> Config {
     Config {
         commercial_project: false,
@@ -226,6 +237,7 @@ requires_share_alike = true
 "#
     };
     let root = tree.path();
+    seed_licenses(root);
     let svc = services();
     let cfg = non_commercial_config();
     let ctx = AuditCtx {
@@ -266,6 +278,7 @@ allows_commercial_use = false
 "#
     };
     let root = tree.path();
+    seed_licenses(root);
     let svc = services();
     let cfg = non_commercial_config();
     let ctx = AuditCtx {

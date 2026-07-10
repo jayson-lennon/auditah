@@ -64,6 +64,7 @@ pub fn run_audit(ctx: &AuditCtx) -> Result<AuditReport, Report<AuditError>> {
         if let Some(record) = &resolved.record {
             check_resolution(asset, record.license.as_str(), ctx, &mut report);
             if let Some(entry) = ctx.services.registry.get(&record.license) {
+                check_license_text(asset, &entry.id, ctx, &mut report);
                 let terms = effective_terms(&entry.terms, &record.overrides);
                 check_obligations(asset, record, &terms, ctx.config, &mut report);
             }
@@ -111,6 +112,20 @@ fn check_resolution(asset: &Path, license_id: &str, ctx: &AuditCtx, report: &mut
             FindingCode::UnknownLicense,
             asset.to_path_buf(),
             format!("unknown license id {license_id:?} not in registry"),
+        ));
+    }
+}
+
+/// License text presence: the referenced license must have a LICENSES/<id>.txt file.
+fn check_license_text(asset: &Path, license_id: &str, ctx: &AuditCtx, report: &mut AuditReport) {
+    let text_path = ctx.root.join("LICENSES").join(format!("{license_id}.txt"));
+    if !ctx.services.fs.exists(&text_path) {
+        report.push(Finding::fail(
+            FindingCode::MissingLicenseText,
+            asset.to_path_buf(),
+            format!(
+                "license {license_id:?} has no LICENSES/{license_id}.txt; run `auditah init-licenses`"
+            ),
         ));
     }
 }

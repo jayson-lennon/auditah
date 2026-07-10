@@ -19,6 +19,17 @@ fn services() -> Services {
     }
 }
 
+/// Seed `LICENSES/<id>.txt` for every embedded license so audit's
+/// MissingLicenseText check passes in these round-trip scenarios.
+fn seed_licenses(root: &std::path::Path) {
+    let reg = LicenseRegistry::embedded_only();
+    let dir = root.join("LICENSES");
+    std::fs::create_dir_all(&dir).unwrap();
+    for entry in reg.entries() {
+        std::fs::write(dir.join(format!("{}.txt", entry.id)), &entry.text).unwrap();
+    }
+}
+
 fn cfg() -> Config {
     Config {
         commercial_project: false,
@@ -44,6 +55,7 @@ fn record(license: &str) -> AttributionRecord {
 fn add_sidecar_makes_asset_pass_audit() {
     let tree = temptree! { "sword.glb": "binary" };
     let root = tree.path();
+    seed_licenses(root);
     let svc = services();
     write_sidecar(&svc, &root.join("sword.glb"), &record("CC0-1.0")).unwrap();
 
@@ -71,6 +83,7 @@ fn init_pack_manifest_covers_entire_directory() {
         }
     };
     let root = tree.path();
+    seed_licenses(root);
     let svc = services();
     write_manifest(&svc, &root.join("pack"), &record("CC0-1.0")).unwrap();
 
@@ -97,6 +110,7 @@ fn init_pack_manifest_covers_subdirectories() {
         }
     };
     let root = tree.path();
+    seed_licenses(root);
     let svc = services();
     write_manifest(&svc, &root.join("pack"), &record("CC0-1.0")).unwrap();
 
@@ -122,6 +136,7 @@ fn add_sidecar_overrides_init_pack_manifest() {
         }
     };
     let root = tree.path();
+    seed_licenses(root);
     let svc = services();
     // Manifest says CC0; sidecar says CC-BY (which requires a non-empty source).
     write_manifest(&svc, &root.join("pack"), &record("CC0-1.0")).unwrap();
