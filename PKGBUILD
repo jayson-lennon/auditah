@@ -1,6 +1,6 @@
 # Maintainer: Jayson Lennon <jayson@jaysonlennon.dev>
 pkgname=auditah
-pkgver=0.1.1
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Obligation-aware license compliance + attribution tool for gamedev"
 arch=('x86_64')
