@@ -185,10 +185,10 @@ manual_review = false
 }
 
 // Well-known SPDX path integration tests (exercise the run() dispatch).
-// These construct AddLicenseCmd directly and call run() to verify the dual
+// These construct LicenseCmd directly and call run() to verify the dual
 // dispatch (well-known vs --custom) end-to-end.
 
-use auditah::cli::add_license_cmd::{run, AddLicenseCmd};
+use auditah::cli::license_cmd::{run, LicenseCmd};
 use auditah::cli::CommandStatus;
 
 // `add-license MIT` (authored grid) extracts text + authored grid; silent.
@@ -197,7 +197,7 @@ fn add_license_well_known_authored_extracts_text_and_grid() {
     // Given an empty project root.
     let tree = temptree! {};
     let root = tree.path().to_path_buf();
-    let cmd = AddLicenseCmd {
+    let cmd = LicenseCmd {
         name: "MIT".to_string(),
         custom: false,
         root: root.clone(),
@@ -224,7 +224,7 @@ fn add_license_well_known_case_insensitive_writes_canonical_casing() {
     // Given an empty project root.
     let tree = temptree! {};
     let root = tree.path().to_path_buf();
-    let cmd = AddLicenseCmd {
+    let cmd = LicenseCmd {
         name: "mit".to_string(),
         custom: false,
         root: root.clone(),
@@ -254,7 +254,7 @@ fn add_license_well_known_no_grid_writes_text_and_placeholder_grid() {
     let tree = temptree! {};
     let root = tree.path().to_path_buf();
     // Bzip2-1.0.6 is in the SPDX text corpus but has no authored grid.
-    let cmd = AddLicenseCmd {
+    let cmd = LicenseCmd {
         name: "Bzip2-1.0.6".to_string(),
         custom: false,
         root: root.clone(),
@@ -279,7 +279,7 @@ fn add_license_custom_writes_licenseref_default_fail_grid() {
     // Given an empty project root.
     let tree = temptree! {};
     let root = tree.path().to_path_buf();
-    let cmd = AddLicenseCmd {
+    let cmd = LicenseCmd {
         name: "Foo".to_string(),
         custom: true,
         root: root.clone(),
@@ -306,7 +306,7 @@ fn add_license_custom_on_known_spdx_id_errors() {
     // Given an empty project root.
     let tree = temptree! {};
     let root = tree.path().to_path_buf();
-    let cmd = AddLicenseCmd {
+    let cmd = LicenseCmd {
         name: "MIT".to_string(),
         custom: true,
         root,
@@ -325,7 +325,7 @@ fn add_license_unknown_spdx_id_without_custom_errors() {
     // Given an empty project root.
     let tree = temptree! {};
     let root = tree.path().to_path_buf();
-    let cmd = AddLicenseCmd {
+    let cmd = LicenseCmd {
         name: "NotReal".to_string(),
         custom: false,
         root,

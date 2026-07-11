@@ -25,9 +25,9 @@ fmt-fix:
 audit:
     cargo run -- audit
 
-# Generate CREDITS.md from attribution sidecars/manifests.
-credits:
-    cargo run -- credits
+# Generate all distribution artifacts (CREDITS.md, NOTICES.md, BOM.md).
+generate:
+    cargo run -- generate
 
 # Alias: license compliance lint.
 lint: audit

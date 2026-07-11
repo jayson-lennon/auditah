@@ -23,7 +23,7 @@ use super::CommandStatus;
 /// defaults; refuses if `<name>` collides with a well-known SPDX id (case-
 /// insensitive).
 #[derive(Debug, Args)]
-pub struct AddLicenseCmd {
+pub struct LicenseCmd {
     /// License name. Either a well-known SPDX id (e.g. `MIT`, no flag) or a custom
     /// name (with `--custom`, prefixed as `LicenseRef-<name>`).
     pub name: String,
@@ -44,7 +44,7 @@ pub struct AddLicenseCmd {
 ///
 /// Returns an error if services fail, the name doesn't resolve (unknown SPDX id),
 /// a `--custom` name collides with a well-known id, or a target file already exists.
-pub fn run(cmd: &AddLicenseCmd) -> Result<CommandStatus, Report<AppError>> {
+pub fn run(cmd: &LicenseCmd) -> Result<CommandStatus, Report<AppError>> {
     let services = Services::real(&cmd.root).change_context(AppError)?;
 
     if cmd.custom {

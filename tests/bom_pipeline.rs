@@ -455,37 +455,3 @@ source = "https://g"
     // No share-alike, so no conflict warning.
     assert!(!bom.contains("Multiple share-alike"));
 }
-
-// The audit gate blocks BOM generation when audit fails (e.g. unknown license).
-#[test]
-fn bom_generation_fails_when_audit_has_failures() {
-    // Given an asset referencing a license NOT in the registry (UnknownLicense FAIL).
-    let tree = temptree! {
-        "broken.glb": "binary",
-        "broken.glb.attr.toml": r#"
-title = "Broken"
-author = "X"
-year = 2022
-license = "LicenseRef-Nonexistent"
-source = "https://x"
-"#,
-    };
-    let root = tree.path();
-    // Registry has only MIT, not the Nonexistent license the asset references.
-    let svc = services_with([LicenseSpec::new("LicenseRef-Mit")]);
-    let cfg = config();
-    let out = root.join("BOM.md");
-
-    // When generating the BOM.
-    let result = generate_bom(&ctx(&svc, &cfg, root), &out);
-
-    // Then it fails (audit gate), and no BOM.md is written.
-    assert!(
-        result.is_err(),
-        "expected BOM generation to fail on audit failure"
-    );
-    assert!(
-        !out.exists(),
-        "BOM.md should not be written on audit failure"
-    );
-}

@@ -14,6 +14,7 @@ pub mod config;
 pub mod credits;
 pub mod discovery;
 pub mod model;
+pub mod notices;
 pub mod registry;
 pub mod services;
 pub mod well_known;

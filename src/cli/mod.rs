@@ -7,12 +7,11 @@
 use crate::AppError;
 use error_stack::Report;
 
-pub mod add_cmd;
-pub mod add_license_cmd;
 pub mod audit_cmd;
-pub mod bom_cmd;
-pub mod credits_cmd;
+pub mod generate_cmd;
 pub mod init_pack_cmd;
+pub mod license_cmd;
+pub mod sidecar_cmd;
 
 /// The outcome of a command that completed its work.
 ///

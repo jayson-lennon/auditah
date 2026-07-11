@@ -264,25 +264,10 @@ fn render_terms_bullets(terms: &LicenseTerms) -> String {
 ///
 /// # Errors
 ///
-/// Returns `BomError` if the audit pass fails, the audit reports FAIL findings,
-/// or BOM collection/render/write fails.
+/// Returns `BomError` if BOM collection/render/write fails. The audit
+/// gate is the caller's responsibility (`generate` runs it once before any
+/// artifact generation).
 pub fn generate_bom(ctx: &BomCtx, output_path: &Path) -> Result<(), Report<BomError>> {
-    // Audit gate: no BOM on a failing project.
-    let audit_ctx = crate::audit::AuditCtx {
-        services: ctx.services,
-        config: ctx.config,
-        root: ctx.root,
-    };
-    let report = crate::audit::run_audit(&audit_ctx).change_context(BomError)?;
-    if report.has_failures() {
-        return Err(Report::new(BomError)
-            .attach(format!(
-                "{} audit failure(s) — fix before generating BOM",
-                report.fail_count()
-            ))
-            .attach("run `auditah audit` for details"));
-    }
-
     let summaries = collect_bom(ctx)?;
     let markdown = render_bom(&summaries);
     ctx.services

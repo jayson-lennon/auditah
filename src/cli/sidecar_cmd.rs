@@ -17,7 +17,7 @@ use super::CommandStatus;
 
 /// Scaffold an `<asset>.attr.toml` sidecar for a single asset.
 #[derive(Debug, Args)]
-pub struct AddCmd {
+pub struct SidecarCmd {
     /// Path to the asset file to annotate.
     pub file: PathBuf,
     /// Title of the work.
@@ -44,7 +44,7 @@ pub struct AddCmd {
 /// # Errors
 ///
 /// Returns an error if field prompting, services, or the sidecar write fail.
-pub fn run(cmd: &AddCmd) -> Result<CommandStatus, Report<AppError>> {
+pub fn run(cmd: &SidecarCmd) -> Result<CommandStatus, Report<AppError>> {
     let record = build_record(cmd).change_context(AppError)?;
     let root = cmd.file.parent().unwrap_or(Path::new("."));
     let services = Services::real(root).change_context(AppError)?;
@@ -55,7 +55,7 @@ pub fn run(cmd: &AddCmd) -> Result<CommandStatus, Report<AppError>> {
 
 /// Prompt interactively for any missing field. Flags provided on the CLI skip
 /// the prompt for that field.
-fn build_record(cmd: &AddCmd) -> Result<AttributionRecord, Report<FieldError>> {
+fn build_record(cmd: &SidecarCmd) -> Result<AttributionRecord, Report<FieldError>> {
     let title = field(cmd.title.clone(), "Title")?;
     let author = field(cmd.author.clone(), "Author")?;
     let year = field_year(cmd.year)?;

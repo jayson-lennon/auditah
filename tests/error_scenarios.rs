@@ -402,15 +402,15 @@ fn audit_cmd_violations_returns_ok_compliance_failure() {
 }
 
 #[test]
-fn add_cmd_run_returns_err_on_write_failure() {
+fn sidecar_cmd_run_returns_err_on_write_failure() {
     // Given an add command whose target path is under an existing file (unwritable).
-    use auditah::cli::add_cmd::{run as add_run, AddCmd};
+    use auditah::cli::sidecar_cmd::{run as sidecar_run, SidecarCmd};
     let tree = temptree! {
         "blocker": "i am a file, not a dir"
     };
     let root = tree.path();
     let target = root.join("blocker").join("x.glb");
-    let cmd = AddCmd {
+    let cmd = SidecarCmd {
         file: target,
         title: Some("X".to_string()),
         author: Some("A".to_string()),
@@ -421,7 +421,7 @@ fn add_cmd_run_returns_err_on_write_failure() {
     };
 
     // When running the add command.
-    let result = add_run(&cmd);
+    let result = sidecar_run(&cmd);
 
     // Then it returns Err (write failure, exit 2).
     assert!(result.is_err(), "add write failure must return Err");

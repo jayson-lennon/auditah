@@ -34,6 +34,7 @@ pub const DEFAULT_EXCLUDES: &[&str] = &[
     "Cargo.lock",
     "**/*.lock",
     "CREDITS.md",
+    "NOTICES.md",
     "BOM.md",
     // Common non-asset config
     "**/justfile",
@@ -64,6 +65,9 @@ mod tests {
         assert!(DEFAULT_EXCLUDES.contains(&"**/manifest.toml"));
         assert!(DEFAULT_EXCLUDES.contains(&"**/LICENSES/**"));
         assert!(DEFAULT_EXCLUDES.contains(&"auditah.toml"));
+        assert!(DEFAULT_EXCLUDES.contains(&"CREDITS.md"));
+        assert!(DEFAULT_EXCLUDES.contains(&"NOTICES.md"));
+        assert!(DEFAULT_EXCLUDES.contains(&"BOM.md"));
     }
 
     #[test]

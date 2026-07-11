@@ -5,8 +5,8 @@
 
 use auditah::cli::command_to_exit_code;
 use auditah::cli::{
-    add_cmd::AddCmd, add_license_cmd::AddLicenseCmd, audit_cmd::AuditCmd, bom_cmd::BomCmd,
-    credits_cmd::CreditsCmd, init_pack_cmd::InitPackCmd, CommandStatus,
+    audit_cmd::AuditCmd, generate_cmd::GenerateCmd, init_pack_cmd::InitPackCmd,
+    license_cmd::LicenseCmd, sidecar_cmd::SidecarCmd, CommandStatus,
 };
 use clap::{Parser, Subcommand};
 use error_stack::Report;
@@ -25,14 +25,12 @@ struct Cli {
 enum Command {
     /// Audit license compliance of assets.
     Audit(AuditCmd),
-    /// Generate a CREDITS.md from attribution data.
-    Credits(CreditsCmd),
-    /// Generate a license bill of materials (BOM.md).
-    Bom(BomCmd),
     /// Scaffold an attribution sidecar for a single asset.
-    Add(AddCmd),
+    Sidecar(SidecarCmd),
     /// Scaffold a new license definition (LICENSES/<id>.toml).
-    AddLicense(AddLicenseCmd),
+    License(LicenseCmd),
+    /// Generate all distribution artifacts (CREDITS.md, NOTICES.md, BOM.md).
+    Generate(GenerateCmd),
     /// Write a directory manifest.toml covering a folder.
     InitPack(InitPackCmd),
 }
@@ -41,11 +39,10 @@ enum Command {
 fn dispatch(command: Command) -> Result<CommandStatus, Report<AppError>> {
     match command {
         Command::Audit(cmd) => auditah::cli::audit_cmd::run(&cmd),
-        Command::Credits(cmd) => auditah::cli::credits_cmd::run(&cmd),
-        Command::Bom(cmd) => auditah::cli::bom_cmd::run(&cmd),
-        Command::Add(cmd) => auditah::cli::add_cmd::run(&cmd),
-        Command::AddLicense(cmd) => auditah::cli::add_license_cmd::run(&cmd),
+        Command::Sidecar(cmd) => auditah::cli::sidecar_cmd::run(&cmd),
+        Command::License(cmd) => auditah::cli::license_cmd::run(&cmd),
         Command::InitPack(cmd) => auditah::cli::init_pack_cmd::run(&cmd),
+        Command::Generate(cmd) => auditah::cli::generate_cmd::run(&cmd),
     }
 }
 
