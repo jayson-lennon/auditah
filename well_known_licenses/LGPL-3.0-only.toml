@@ -10,7 +10,7 @@ derivatives = "share-alike"
 requires_modification_notice = false
 allows_commercial_use = true
 allows_redistribution = true
-manual_review = false
+manual_review = true
 
 # LGPL's copyleft is conditional: modifications to the LGPL'd library itself
 # are share-alike, but merely linking does not relicense the consuming app.

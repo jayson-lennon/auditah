@@ -10,7 +10,7 @@ derivatives = "share-alike"
 requires_modification_notice = false
 allows_commercial_use = true
 allows_redistribution = true
-manual_review = false
+manual_review = true
 
 # MPL-2.0's source disclosure is file-level: modified MPL'd files must ship
 # their source. Copyleft does not extend across file boundaries.

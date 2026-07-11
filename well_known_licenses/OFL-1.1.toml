@@ -10,7 +10,7 @@ derivatives = "share-alike"
 requires_modification_notice = false
 allows_commercial_use = true
 allows_redistribution = true
-manual_review = false
+manual_review = true
 
 # OFL also reserves font names via the "Reserved Font Name" clause — a narrow
 # restriction on renaming derivatives that the boolean grid cannot express.

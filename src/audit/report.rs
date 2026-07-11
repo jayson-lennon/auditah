@@ -4,14 +4,15 @@ use std::path::PathBuf;
 
 /// Severity of an audit finding.
 ///
-/// `Fail` blocks compliance (non-zero exit). `Flag` surfaces a condition that
-/// cannot be auto-verified and needs human review (e.g. share-alike clauses).
+/// `Fail` blocks compliance (non-zero exit). There is no non-blocking
+/// severity: audit either passes or fails. Obligations that cannot be
+/// auto-verified (source disclosure, share-alike, license-notice shipping)
+/// are either auto-complied by `credits`/`NOTICES` or surfaced via the
+/// `manual_review` forcing function — never as a silent warning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
     /// Blocking: compliance is violated. Auditor can prove it.
     Fail,
-    /// Non-blocking: needs human review. Auditor cannot auto-verify.
-    Flag,
 }
 
 /// Machine-readable code identifying the kind of finding. Drives grouping in
@@ -30,12 +31,6 @@ pub enum FindingCode {
     NotCommerciallyLicensed,
     /// `derivatives = "disallowed"` (effective) but `modified = true`.
     ModifiedUnderNoDerivatives,
-    /// `derivatives = "share-alike"` — human must confirm distribution license.
-    ShareAlikeReview,
-    /// `requires_source_disclosure` — human must confirm source offering.
-    SourceDisclosureReview,
-    /// `requires_license_notice` — human must confirm license text shipped.
-    LicenseNoticeReview,
     /// Referenced license id has no `LICENSES/<id>.txt` file on disk.
     MissingLicenseText,
     /// `allows_redistribution = false` (effective) under a redistributing project.
@@ -66,17 +61,6 @@ impl Finding {
             detail: detail.into(),
         }
     }
-
-    /// Convenience constructor for a `Flag`.
-    #[must_use]
-    pub fn flag(code: FindingCode, asset: PathBuf, detail: impl Into<String>) -> Self {
-        Self {
-            severity: Severity::Flag,
-            code,
-            asset,
-            detail: detail.into(),
-        }
-    }
 }
 
 /// The aggregate audit result.
@@ -101,15 +85,6 @@ impl AuditReport {
             .count()
     }
 
-    /// Count of `Flag` findings.
-    #[must_use]
-    pub fn flag_count(&self) -> usize {
-        self.findings
-            .iter()
-            .filter(|f| f.severity == Severity::Flag)
-            .count()
-    }
-
     /// Add a finding.
     pub fn push(&mut self, finding: Finding) {
         self.findings.push(finding);
@@ -130,30 +105,10 @@ mod tests {
         // Given a default (empty) report.
         let r = AuditReport::default();
 
-        // When inspecting the report.
         // Then it has no failures and zero counts.
         assert!(!r.has_failures());
         assert_eq!(r.fail_count(), 0);
-        assert_eq!(r.flag_count(), 0);
     }
-
-    #[test]
-    fn flag_only_does_not_count_as_failure() {
-        // Given a report containing only a FLAG finding.
-        let mut r = AuditReport::default();
-        r.push(Finding::flag(
-            FindingCode::ShareAlikeReview,
-            asset(),
-            "review",
-        ));
-
-        // When inspecting the report.
-        // Then has_failures is false; flag_count is 1, fail_count is 0.
-        assert!(!r.has_failures());
-        assert_eq!(r.flag_count(), 1);
-        assert_eq!(r.fail_count(), 0);
-    }
-
     #[test]
     fn fail_marks_has_failures_true() {
         // Given a report containing a FAIL finding.
@@ -171,15 +126,10 @@ mod tests {
     }
 
     #[test]
-    fn mixed_fail_and_flag_counted_separately() {
-        // Given a report with 2 fails and 1 flag.
+    fn multiple_fails_all_counted() {
+        // Given a report with 2 fails.
         let mut r = AuditReport::default();
         r.push(Finding::fail(FindingCode::UnknownLicense, asset(), "x"));
-        r.push(Finding::flag(
-            FindingCode::LicenseNoticeReview,
-            asset(),
-            "y",
-        ));
         r.push(Finding::fail(
             FindingCode::IncompleteAttribution,
             asset(),
@@ -187,9 +137,8 @@ mod tests {
         ));
 
         // When inspecting the report.
-        // Then fail_count is 2, flag_count is 1, has_failures is true.
+        // Then fail_count is 2 and has_failures is true.
         assert_eq!(r.fail_count(), 2);
-        assert_eq!(r.flag_count(), 1);
         assert!(r.has_failures());
     }
     #[test]

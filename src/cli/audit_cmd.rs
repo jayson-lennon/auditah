@@ -52,34 +52,14 @@ pub fn run(cmd: &AuditCmd) -> Result<CommandStatus, Report<AppError>> {
     }
 }
 
-/// Render the report grouped by severity: FAILs first, then FLAGs.
+/// Render the report.
 fn render_report(report: &AuditReport) {
-    use crate::audit::report::Severity;
     if report.findings.is_empty() {
         println!("audit: clean — no findings");
         return;
     }
-    let fails: Vec<_> = report
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Fail)
-        .collect();
-    let flags: Vec<_> = report
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Flag)
-        .collect();
-
-    if !fails.is_empty() {
-        println!("FAIL ({}):", fails.len());
-        for f in &fails {
-            println!("  {} — {}", f.asset.display(), f.detail);
-        }
-    }
-    if !flags.is_empty() {
-        println!("FLAG ({}):", flags.len());
-        for f in &flags {
-            println!("  {} — {}", f.asset.display(), f.detail);
-        }
+    println!("FAIL ({}):", report.findings.len());
+    for f in &report.findings {
+        println!("  {} — {}", f.asset.display(), f.detail);
     }
 }

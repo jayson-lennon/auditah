@@ -130,7 +130,7 @@ fn write_terms(s: &mut String, terms: &LicenseTerms) {
     );
     write_commented_bool(
         s,
-        "# You MUST offer corresponding source code on distribution. Auto-unverifiable (FLAG).",
+        "# You MUST offer corresponding source code on distribution (GPL-family). Tracked in the BOM; no audit finding.",
         "requires_source_disclosure",
         terms.requires_source_disclosure,
     );
