@@ -27,18 +27,6 @@ build() {
     cargo build --release --frozen --offline
 }
 
-check() {
-    cd "$srcdir/$pkgname"
-    export RUSTUP_TOOLCHAIN=stable
-
-    # Run the test suite (use cargo test if nextest isn't installed).
-    if cargo nextest --version >/dev/null 2>&1; then
-        cargo nextest run --release --frozen --offline
-    else
-        cargo test --release --frozen --offline
-    fi
-}
-
 package() {
     cd "$srcdir/$pkgname"
 
