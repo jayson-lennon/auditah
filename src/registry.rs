@@ -317,22 +317,36 @@ mod tests {
     // --- Registry load from disk ---
 
     #[test]
-    fn load_reads_uppercase_licenses_dir() {
-        // Given a temp root with LICENSES/LicenseRef-Foo.toml.
+    fn commit_writes_and_loads_licenseref_entry() {
+        // Given a temp root.
         let tmp = tmp_root();
+
+        // When committing a LicenseRef-Foo spec.
         let reg = LicenseRegistry::builder()
             .license(LicenseSpec::new("LicenseRef-Foo"))
             .commit(tmp.path(), &fs())
             .expect("commit");
+
+        // Then the entry is present in the in-memory registry.
         assert!(
             reg.get("LicenseRef-Foo").is_some(),
             "commit must write + load the LicenseRef-Foo entry"
         );
+    }
+
+    #[test]
+    fn load_reads_entry_from_uppercase_licenses_dir() {
+        // Given a temp root with a committed LicenseRef-Foo entry.
+        let tmp = tmp_root();
+        LicenseRegistry::builder()
+            .license(LicenseSpec::new("LicenseRef-Foo"))
+            .commit(tmp.path(), &fs())
+            .expect("commit");
 
         // When re-loading from the same root (simulating app startup).
         let reloaded = LicenseRegistry::load(&fs(), tmp.path()).expect("load");
 
-        // Then the LicenseRef-Foo entry resolves.
+        // Then the LicenseRef-Foo entry resolves from uppercase LICENSES/.
         assert!(
             reloaded.get("LicenseRef-Foo").is_some(),
             "registry must read from uppercase LICENSES/"

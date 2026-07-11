@@ -378,9 +378,10 @@ source = "https://s"
 
 // A project with multiple license types produces a BOM with all summaries and
 // ordered action items (conflict warnings, then per-license items in id order).
-#[test]
-fn multiple_obligation_types_produce_complete_bom_with_ordered_actions() {
-    // Given MIT (permissive), CC-BY (notice), and GPL (source disclosure) assets.
+// Shared builder for the 3-asset multi-obligation project: MIT (permissive),
+// CC-BY (notice), GPL (source disclosure). Reads the BOM inside so the temptree
+// outlives the read.
+fn multi_obligation_bom() -> String {
     let tree = temptree! {
         "mit.glb": "binary",
         "mit.glb.attr.toml": r#"
@@ -418,12 +419,17 @@ source = "https://g"
             .terms(source_disclosure_terms()),
     ]);
     let cfg = config();
-
-    // When generating the BOM.
-    let bom = generated(
+    generated(
         &ctx(&svc, &cfg, root),
         &["LicenseRef-Mit", "LicenseRef-CcBy", "LicenseRef-Gpl"],
-    );
+    )
+}
+
+#[test]
+fn bom_summaries_include_all_license_types() {
+    // Given a project with MIT, CC-BY, and GPL assets.
+    // When generating the BOM.
+    let bom = multi_obligation_bom();
 
     // Then all 3 licenses appear in the summary.
     assert!(
@@ -438,8 +444,15 @@ source = "https://g"
         bom.contains("LicenseRef-Gpl"),
         "GPL summary missing:\n{bom}"
     );
+}
 
-    // And action items reference both the notice and source obligations.
+#[test]
+fn bom_action_items_reference_notice_and_source_obligations() {
+    // Given a project with MIT, CC-BY, and GPL assets.
+    // When generating the BOM.
+    let bom = multi_obligation_bom();
+
+    // Then action items reference both the notice and source obligations.
     assert!(
         bom.contains("NOTICES.md"),
         "notice action item missing:\n{bom}"
@@ -452,6 +465,14 @@ source = "https://g"
         bom.contains("gpl.glb"),
         "GPL asset path missing from action items:\n{bom}"
     );
-    // No share-alike, so no conflict warning.
+}
+
+#[test]
+fn bom_has_no_share_alike_conflict_warning() {
+    // Given a project with no share-alike licenses.
+    // When generating the BOM.
+    let bom = multi_obligation_bom();
+
+    // Then there is no share-alike conflict warning.
     assert!(!bom.contains("Multiple share-alike"));
 }

@@ -60,12 +60,16 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
-    fn services_real_constructs_without_panic() {
-        // Given the real Services constructor.
+    fn services_real_constructs_with_real_fs_backend() {
+        // Given the real Services constructor against the project root.
         // When constructing real services.
-        let _services = Services::real(Path::new(".")).expect("real services");
+        let services = Services::real(Path::new(".")).expect("real services");
 
-        // Then construction succeeds (no panic).
+        // Then the fs backend observes a known file in the project root.
+        assert!(
+            services.fs.exists(Path::new("Cargo.toml")),
+            "real fs backend should observe Cargo.toml in project root"
+        );
     }
 
     #[test]

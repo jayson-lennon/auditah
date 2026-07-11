@@ -77,7 +77,8 @@ fn template_comments_every_terms_field() {
 // Test case 3: the template header explains the id ↔ LICENSES/<id>.txt relationship.
 #[test]
 fn template_header_explains_licenseref_and_text_relationship() {
-    // Given the rendered template for LicenseRef-Foo.
+    // Given a LicenseRef-Foo id.
+    // When rendering the template.
     let content = render_license_template("LicenseRef-Foo");
 
     // Then the header names the LicenseRef- form and points at LICENSES/<id>.txt.
@@ -139,13 +140,16 @@ fn add_license_writes_to_explicit_root() {
 }
 
 // license_ref_id prefixing is idempotent.
-#[test]
-fn license_ref_id_prefixes_and_is_idempotent() {
+#[rstest::rstest]
+#[case::bare("Foo", "LicenseRef-Foo")]
+#[case::already_prefixed("LicenseRef-Foo", "LicenseRef-Foo")]
+fn license_ref_id_canonicalizes(#[case] input: &str, #[case] expected: &str) {
     // Given a bare name and an already-prefixed id.
     // When computing the canonical id.
-    // Then bare names are prefixed and prefixed names are unchanged.
-    assert_eq!(license_ref_id("Foo"), "LicenseRef-Foo");
-    assert_eq!(license_ref_id("LicenseRef-Foo"), "LicenseRef-Foo");
+    let actual = license_ref_id(input);
+
+    // Then the input maps to the expected canonical LicenseRef- form.
+    assert_eq!(actual, expected);
 }
 
 // Test case 13: a stale `text` field is rejected by deny_unknown_fields at load.

@@ -17,16 +17,6 @@ use common::{
     codes_for, commercial_config, non_commercial_config, permissive_terms, services_with,
 };
 
-/// The shared assertion: the asset named by `needle` must surface `expected`.
-fn assert_finding(ctx: &AuditCtx, needle: &str, expected: FindingCode) {
-    let report = run_audit(ctx).expect("audit runs");
-    let codes = codes_for(&report, needle);
-    assert!(
-        codes.contains(&expected),
-        "expected {expected:?} for {needle:?}, got {codes:?}"
-    );
-}
-
 // Same property: a violated obligation → its exact FindingCode.
 #[rstest::rstest]
 #[case::uncovered(
@@ -119,7 +109,13 @@ fn obligation_violation_surfaces_expected_finding_code(
         root,
     };
 
-    // When running the audit and asserting the finding.
+    // When running the audit.
+    let report = run_audit(&ctx).expect("audit runs");
+
     // Then the violated obligation surfaces its exact FindingCode.
-    assert_finding(&ctx, asset_name, expected);
+    let codes = codes_for(&report, asset_name);
+    assert!(
+        codes.contains(&expected),
+        "expected {expected:?} for {asset_name:?}, got {codes:?}"
+    );
 }

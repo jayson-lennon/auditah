@@ -114,50 +114,26 @@ source = "https://example.com/c"
     );
 }
 
-// Modification notice appears only when requires_modification_notice + modified.
-#[test]
-fn modification_notice_emitted_only_when_required_and_modified() {
-    // Given three CC-BY assets varying modified/notice flags.
-    let tree = temptree! {
-        // modified + requires_modification_notice (via override) → notice present
-        "mod1.glb": "binary",
-        "mod1.glb.attr.toml": r#"
-title = "Mod1"
+/// Build a credits output for a single CC-BY asset with the given title,
+/// `modified` flag, and `requires_modification_notice` override. Reads inside so
+/// the temptree outlives the read.
+fn credits_for_asset(title: &str, modified: bool, mod_notice_override: bool) -> String {
+    let sidecar = format!(
+        r#"
+title = "{title}"
 author = "A"
 year = 2020
 license = "LicenseRef-CcBy"
 source = "https://example.com"
-modified = true
+modified = {modified}
 
 [overrides]
-requires_modification_notice = true
-"#,
-        // modified but license does NOT require notice → no notice
-        "mod2.glb": "binary",
-        "mod2.glb.attr.toml": r#"
-title = "Mod2"
-author = "A"
-year = 2020
-license = "LicenseRef-CcBy"
-source = "https://example.com"
-modified = true
-
-[overrides]
-requires_modification_notice = false
-"#,
-        // requires notice but NOT modified → no notice
-        "mod3.glb": "binary",
-        "mod3.glb.attr.toml": r#"
-title = "Mod3"
-author = "A"
-year = 2020
-license = "LicenseRef-CcBy"
-source = "https://example.com"
-modified = false
-
-[overrides]
-requires_modification_notice = true
+requires_modification_notice = {mod_notice_override}
 "#
+    );
+    let tree = temptree! {
+        "asset.glb": "binary",
+        "asset.glb.attr.toml": sidecar,
     };
     let root = tree.path();
     let svc = services_with([LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
@@ -165,20 +141,56 @@ requires_modification_notice = true
         ..permissive_terms()
     })]);
     let cfg = non_commercial_config();
+    generated(&ctx(&svc, &cfg, root))
+}
 
+#[test]
+fn modification_notice_present_when_modified_and_required() {
+    // Given a modified asset whose license requires a modification notice.
     // When generating credits.
-    let content = generated(&ctx(&svc, &cfg, root));
+    let content = credits_for_asset("Mod1", true, true);
 
-    // Then the notice appears only for Mod1 (modified AND requires notice).
-    for (title, expect_notice) in [("Mod1", true), ("Mod2", false), ("Mod3", false)] {
-        let line = content
-            .lines()
-            .find(|l| l.contains(&format!("**{title}**")))
-            .unwrap_or_else(|| panic!("{title} entry missing from:\n{content}"));
-        let has_notice = line.contains("(modified from original)");
-        assert_eq!(
-            has_notice, expect_notice,
-            "{title}: notice was {has_notice}, expected {expect_notice}\nline: {line}"
-        );
-    }
+    // Then the entry carries the "(modified from original)" notice.
+    let line = content
+        .lines()
+        .find(|l| l.contains("**Mod1**"))
+        .unwrap_or_else(|| panic!("Mod1 entry missing from:\n{content}"));
+    assert!(
+        line.contains("(modified from original)"),
+        "expected modification notice; line: {line}"
+    );
+}
+
+#[test]
+fn modification_notice_absent_when_modified_but_not_required() {
+    // Given a modified asset whose license does NOT require a notice.
+    // When generating credits.
+    let content = credits_for_asset("Mod2", true, false);
+
+    // Then the entry has no modification notice.
+    let line = content
+        .lines()
+        .find(|l| l.contains("**Mod2**"))
+        .unwrap_or_else(|| panic!("Mod2 entry missing from:\n{content}"));
+    assert!(
+        !line.contains("(modified from original)"),
+        "expected no modification notice; line: {line}"
+    );
+}
+
+#[test]
+fn modification_notice_absent_when_required_but_not_modified() {
+    // Given an unmodified asset whose license requires a notice.
+    // When generating credits.
+    let content = credits_for_asset("Mod3", false, true);
+
+    // Then the entry has no modification notice.
+    let line = content
+        .lines()
+        .find(|l| l.contains("**Mod3**"))
+        .unwrap_or_else(|| panic!("Mod3 entry missing from:\n{content}"));
+    assert!(
+        !line.contains("(modified from original)"),
+        "expected no modification notice; line: {line}"
+    );
 }

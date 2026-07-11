@@ -182,7 +182,7 @@ fn sidecar_and_manifest_themselves_are_not_enumerated_as_assets() {
 }
 
 #[test]
-fn filename_with_spaces_resolves_sidecar() {
+fn spaced_filename_resolves_via_sidecar() {
     // Given an asset with spaces in its name and a matching sidecar.
     let tree = temptree! {
         "Gunny Sack.glb": "binary",
@@ -198,15 +198,36 @@ source = "https://poly.pizza/m/download/Gunny-Sack"
     let fs = real_fs();
     let asset = root.join("Gunny Sack.glb");
 
-    // When resolving and re-enumerating.
+    // When resolving the asset.
     let r = resolve(&fs, &asset, root).unwrap();
-    let got = enumerate(&fs, root, &default_excludes()).unwrap();
 
-    // Then the sidecar resolves and the spaced filename survives the walk.
+    // Then the sidecar resolves with the correct title and author.
     assert!(matches!(r.source, ResolutionSource::Sidecar(_)));
     let rec = r.record.unwrap();
     assert_eq!(rec.title, "Gunny Sack");
     assert_eq!(rec.author, "Oliver Herklotz");
+}
+
+#[test]
+fn spaced_filename_survives_enumeration() {
+    // Given an asset with spaces in its name.
+    let tree = temptree! {
+        "Gunny Sack.glb": "binary",
+        "Gunny Sack.glb.attr.toml": r#"
+title = "Gunny Sack"
+author = "Oliver Herklotz"
+year = 2019
+license = "LicenseRef-CcBy"
+source = "https://poly.pizza/m/download/Gunny-Sack"
+"#
+    };
+    let root = tree.path();
+    let fs = real_fs();
+
+    // When enumerating the project root.
+    let got = enumerate(&fs, root, &default_excludes()).unwrap();
+
+    // Then the spaced filename survives the walk (one asset found, named correctly).
     assert_eq!(got.len(), 1);
     assert!(got[0]
         .file_name()

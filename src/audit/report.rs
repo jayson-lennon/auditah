@@ -102,7 +102,8 @@ mod tests {
 
     #[test]
     fn empty_report_has_no_failures() {
-        // Given a default (empty) report.
+        // Given nothing.
+        // When constructing a default (empty) report.
         let r = AuditReport::default();
 
         // Then it has no failures and zero counts.
@@ -120,8 +121,10 @@ mod tests {
         ));
 
         // When inspecting the report.
+        let has_failures = r.has_failures();
+
         // Then has_failures is true and fail_count is 1.
-        assert!(r.has_failures());
+        assert!(has_failures);
         assert_eq!(r.fail_count(), 1);
     }
 
@@ -137,8 +140,10 @@ mod tests {
         ));
 
         // When inspecting the report.
+        let fail_count = r.fail_count();
+
         // Then fail_count is 2 and has_failures is true.
-        assert_eq!(r.fail_count(), 2);
+        assert_eq!(fail_count, 2);
         assert!(r.has_failures());
     }
     #[test]
@@ -152,8 +157,10 @@ mod tests {
         ));
 
         // When inspecting the report.
+        let has_failures = r.has_failures();
+
         // Then has_failures is true and fail_count is 1.
-        assert!(r.has_failures());
+        assert!(has_failures);
         assert_eq!(r.fail_count(), 1);
     }
 }

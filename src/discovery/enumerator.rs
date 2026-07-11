@@ -104,11 +104,23 @@ mod tests {
         // Given an ExcludeMatcher with a bare filename pattern.
         let m = ExcludeMatcher::new(&["Cargo.toml".to_string()]).unwrap();
 
-        // When checking paths at different depths.
-        // Then the filename matches at top-level and nested, and non-matches are excluded.
-        assert!(m.is_excluded(Path::new("Cargo.toml")));
-        assert!(m.is_excluded(Path::new("sub/Cargo.toml")));
-        assert!(!m.is_excluded(Path::new("src/main.rs")));
+        // When checking the pattern at top-level.
+        let top = m.is_excluded(Path::new("Cargo.toml"));
+
+        // Then the filename matches at top-level.
+        assert!(top);
+
+        // When checking the pattern nested in a subdir.
+        let nested = m.is_excluded(Path::new("sub/Cargo.toml"));
+
+        // Then it matches nested too.
+        assert!(nested);
+
+        // When checking a non-matching path.
+        let other = m.is_excluded(Path::new("src/main.rs"));
+
+        // Then it is not excluded.
+        assert!(!other);
     }
 
     #[test]

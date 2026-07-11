@@ -246,8 +246,10 @@ mod tests {
         let fs = FakeFs::with_files([(Path::new("/x"), "data")]).fail_read(Path::new("/x"));
 
         // When reading that path.
+        let result = fs.read_to_string(Path::new("/x"));
+
         // Then the operation errors.
-        assert!(fs.read_to_string(Path::new("/x")).is_err());
+        assert!(result.is_err());
     }
 
     #[test]
@@ -256,9 +258,10 @@ mod tests {
         let fs = FakeFs::default().fail_write(Path::new("/out"));
 
         // When writing that path.
-        assert!(fs.write(Path::new("/out"), "x").is_err());
+        let result = fs.write(Path::new("/out"), "x");
 
         // Then the operation errors and no file is stored.
+        assert!(result.is_err());
         assert!(!fs.exists(Path::new("/out")));
     }
 
@@ -268,8 +271,10 @@ mod tests {
         let fs = FakeFs::default().fail_walk(Path::new("/proj"));
 
         // When walking that root.
+        let result = fs.walk(Path::new("/proj"));
+
         // Then the operation errors.
-        assert!(fs.walk(Path::new("/proj")).is_err());
+        assert!(result.is_err());
     }
 
     #[test]
@@ -278,17 +283,26 @@ mod tests {
         let fs = FakeFs::default().fail_list_dir(Path::new("/proj"));
 
         // When listing that directory.
+        let result = fs.list_dir(Path::new("/proj"));
+
         // Then the operation errors.
-        assert!(fs.list_dir(Path::new("/proj")).is_err());
+        assert!(result.is_err());
     }
     #[test]
     fn exists_returns_true_for_implicit_directory() {
         // Given a fake with a file nested under a directory path.
         let fs = FakeFs::with_files([(Path::new("/proj/sub/a.txt"), "x")]);
 
-        // When checking whether the directory path exists.
-        // Then it returns true for both the parent and nested directories.
-        assert!(fs.exists(Path::new("/proj")));
-        assert!(fs.exists(Path::new("/proj/sub")));
+        // When checking whether the parent directory exists.
+        let parent_exists = fs.exists(Path::new("/proj"));
+
+        // Then the parent exists.
+        assert!(parent_exists);
+
+        // When checking whether the nested directory exists.
+        let nested_exists = fs.exists(Path::new("/proj/sub"));
+
+        // Then the nested directory exists.
+        assert!(nested_exists);
     }
 }

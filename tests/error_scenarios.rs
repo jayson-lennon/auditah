@@ -443,18 +443,18 @@ fn audit_cmd_missing_root_returns_err_exit_two() {
     assert_eq!(command_to_exit_code(&result), 2);
 }
 
-#[test]
-fn command_to_exit_code_maps_all_three_outcomes() {
-    // Given the three possible command outcomes.
-    let ok_success: Result<CommandStatus, Report<auditah::AppError>> = Ok(CommandStatus::Success);
-    let ok_fail: Result<CommandStatus, Report<auditah::AppError>> =
-        Ok(CommandStatus::ComplianceFailure);
-    let err: Result<CommandStatus, Report<auditah::AppError>> =
-        Err(Report::from(auditah::AppError));
+#[rstest::rstest]
+#[case::success(Ok(CommandStatus::Success), 0)]
+#[case::compliance_failure(Ok(CommandStatus::ComplianceFailure), 1)]
+#[case::error(Err(Report::from(auditah::AppError)), 2)]
+fn command_to_exit_code_maps_outcome_to_code(
+    #[case] outcome: Result<CommandStatus, Report<auditah::AppError>>,
+    #[case] expected: i32,
+) {
+    // Given a command outcome (Success, ComplianceFailure, or Err).
+    // When mapping to an exit code.
+    let code = command_to_exit_code(&outcome);
 
-    // When mapping to exit codes.
-    // Then Success→0, ComplianceFailure→1, Err→2.
-    assert_eq!(command_to_exit_code(&ok_success), 0);
-    assert_eq!(command_to_exit_code(&ok_fail), 1);
-    assert_eq!(command_to_exit_code(&err), 2);
+    // Then the outcome maps to the expected process exit code.
+    assert_eq!(code, expected);
 }

@@ -353,10 +353,10 @@ mod tests {
 
     #[test]
     fn default_fail_is_maximally_restrictive_and_manual_review() {
-        // Given default_fail().
+        // Given nothing.
+        // When constructing the default_fail terms.
         let terms = LicenseTerms::default_fail();
 
-        // When inspecting every field.
         // Then every permission/obligation is false except manual_review, and derivatives are disallowed.
         assert!(!terms.requires_attribution);
         assert!(!terms.requires_license_notice);
