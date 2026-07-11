@@ -257,10 +257,32 @@ fn render_terms_bullets(terms: &LicenseTerms) -> String {
 
 /// Full pipeline: collect, render, and write BOM.md to `output_path`.
 ///
+/// Runs an audit pass first; if any FAIL findings exist, no BOM is generated.
+/// The BOM is a compliance overview — it must not be produced for a project that
+/// doesn't pass audit, or it would silently omit unresolved/unlicensed assets
+/// (lying by omission).
+///
 /// # Errors
 ///
-/// Returns `BomError` on enumeration, resolution, or write failure.
+/// Returns `BomError` if the audit pass fails, the audit reports FAIL findings,
+/// or BOM collection/render/write fails.
 pub fn generate_bom(ctx: &BomCtx, output_path: &Path) -> Result<(), Report<BomError>> {
+    // Audit gate: no BOM on a failing project.
+    let audit_ctx = crate::audit::AuditCtx {
+        services: ctx.services,
+        config: ctx.config,
+        root: ctx.root,
+    };
+    let report = crate::audit::run_audit(&audit_ctx).change_context(BomError)?;
+    if report.has_failures() {
+        return Err(Report::new(BomError)
+            .attach(format!(
+                "{} audit failure(s) — fix before generating BOM",
+                report.fail_count()
+            ))
+            .attach("run `auditah audit` for details"));
+    }
+
     let summaries = collect_bom(ctx)?;
     let markdown = render_bom(&summaries);
     ctx.services
@@ -422,5 +444,34 @@ mod tests {
         // Then the action items section says no outstanding actions.
         assert!(out.contains("## Action items"));
         assert!(out.contains("_No outstanding compliance actions._"));
+    }
+
+    #[test]
+    fn render_terms_bullets_maximally_restrictive_shows_all_flags() {
+        // Given terms with EVERY obligation/permission flag set to test all render branches.
+        let terms = LicenseTerms {
+            requires_attribution: true,
+            requires_license_notice: true,
+            requires_source_disclosure: true,
+            derivatives: Derivatives::Disallowed,
+            requires_modification_notice: true,
+            allows_commercial_use: false,
+            allows_redistribution: false,
+            manual_review: true,
+        };
+        let summaries = vec![summary("Custom-Restrictive", terms, 1)];
+
+        // When rendering.
+        let out = render_bom(&summaries);
+
+        // Then every restrictive flag appears in the output.
+        assert!(out.contains("Commercial use: **not permitted**"));
+        assert!(out.contains("Redistribution: **not permitted**"));
+        assert!(out.contains("Derivatives: **disallowed**"));
+        assert!(out.contains("Attribution: required"));
+        assert!(out.contains("License notice: **MUST reproduce**"));
+        assert!(out.contains("Source disclosure: **MUST offer corresponding source**"));
+        assert!(out.contains("Modification notice: required"));
+        assert!(out.contains("Manual review: required"));
     }
 }

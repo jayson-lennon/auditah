@@ -37,9 +37,13 @@ fn share_alike_terms() -> LicenseTerms {
 // --- helpers ---
 
 /// Generate BOM to `<root>/BOM.md` and return the file contents.
-fn generated(ctx: &BomCtx) -> String {
-    let root = ctx.root;
-    let out = root.join("BOM.md");
+///
+/// Seeds `LICENSES/<id>.txt` for each `ids` entry so the audit gate passes.
+fn generated(ctx: &BomCtx, ids: &[&str]) -> String {
+    if !ids.is_empty() {
+        common::seed_license_text(ctx.root, ids);
+    }
+    let out = ctx.root.join("BOM.md");
     generate_bom(ctx, &out).expect("BOM generation should succeed");
     std::fs::read_to_string(&out).expect("BOM.md should be readable")
 }
@@ -99,7 +103,10 @@ fn permissive_and_cc0_both_appear_in_summary_with_counts() {
     let cfg = config();
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root));
+    let bom = generated(
+        &ctx(&svc, &cfg, root),
+        &["LicenseRef-Mit", "LicenseRef-Cc0"],
+    );
 
     // Then both licenses appear with correct asset counts, and CC0 is NOT omitted.
     assert!(
@@ -133,7 +140,7 @@ source = "https://g"
     let cfg = config();
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root));
+    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-Gpl"]);
 
     // Then the action-items section mentions source disclosure and the asset path.
     assert!(
@@ -163,7 +170,7 @@ source = "https://f"
     let cfg = config();
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root));
+    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-CcBy"]);
 
     // Then the action-items section references NOTICES.md.
     assert!(
@@ -193,9 +200,12 @@ source = "https://m"
     let cfg = config();
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root));
+    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-CcBySa"]);
 
-    // Then a share-alike action item appears, but no "Multiple" conflict warning.
+    assert!(
+        bom.contains("must ship under"),
+        "share-alike action item text missing:\n{bom}"
+    );
     assert!(
         bom.contains("LicenseRef-CcBySa"),
         "SA license summary missing:\n{bom}"
@@ -240,7 +250,10 @@ source = "https://b"
     let cfg = config();
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root));
+    let bom = generated(
+        &ctx(&svc, &cfg, root),
+        &["LicenseRef-CcBySa", "LicenseRef-Gpl"],
+    );
 
     // Then a conflict warning names both licenses.
     assert!(
@@ -268,7 +281,7 @@ fn all_permissive_project_has_summary_but_no_action_items() {
     let cfg = config();
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root));
+    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-Mit"]);
 
     // Then the summary is present but action items note nothing outstanding.
     assert!(bom.contains("LicenseRef-Mit"), "summary missing:\n{bom}");
@@ -282,15 +295,14 @@ fn all_permissive_project_has_summary_but_no_action_items() {
 #[test]
 fn empty_project_writes_bom_with_no_licensed_assets() {
     // Given a project with no assets.
-    let tree = temptree! {
-        "LICENSES": "",
-    };
+    let tree = temptree! {};
+    // (no assets; registry has a license but nothing references it)
     let root = tree.path();
     let svc = services_with([LicenseSpec::new("LicenseRef-Mit")]);
     let cfg = config();
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root));
+    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-Mit"]);
 
     // Then the BOM notes no licensed assets were found.
     assert!(
@@ -312,7 +324,8 @@ fn custom_output_path_writes_to_specified_file() {
     let cfg = config();
     let custom = root.join("custom-bom.md");
 
-    // When generating to a custom path.
+    // When generating to a custom path (seed license text so audit gate passes).
+    common::seed_license_text(root, &["LicenseRef-Mit"]);
     generate_bom(&ctx(&svc, &cfg, root), &custom).expect("BOM generation should succeed");
 
     // Then the custom file exists and BOM.md does not.
@@ -350,7 +363,7 @@ source = "https://s"
     let mut cfg = config();
     cfg.exclude = vec!["**/skip.glb".to_string()];
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root));
+    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-Mit"]);
 
     // Then only the kept asset appears (count = 1, not 2).
     assert!(
@@ -360,5 +373,119 @@ source = "https://s"
     assert!(
         !bom.contains("Skip"),
         "excluded asset leaked into BOM:\n{bom}"
+    );
+}
+
+// A project with multiple license types produces a BOM with all summaries and
+// ordered action items (conflict warnings, then per-license items in id order).
+#[test]
+fn multiple_obligation_types_produce_complete_bom_with_ordered_actions() {
+    // Given MIT (permissive), CC-BY (notice), and GPL (source disclosure) assets.
+    let tree = temptree! {
+        "mit.glb": "binary",
+        "mit.glb.attr.toml": r#"
+title = "Mit Asset"
+author = "Alice"
+year = 2022
+license = "LicenseRef-Mit"
+source = "https://m"
+"#,
+        "ccby.glb": "binary",
+        "ccby.glb.attr.toml": r#"
+title = "CC-BY Asset"
+author = "Bob"
+year = 2022
+license = "LicenseRef-CcBy"
+source = "https://c"
+"#,
+        "gpl.glb": "binary",
+        "gpl.glb.attr.toml": r#"
+title = "GPL Asset"
+author = "Carol"
+year = 2022
+license = "LicenseRef-Gpl"
+source = "https://g"
+"#,
+    };
+    let root = tree.path();
+    let svc = services_with([
+        LicenseSpec::new("LicenseRef-Mit").name("MIT"),
+        LicenseSpec::new("LicenseRef-CcBy")
+            .name("CC-BY")
+            .terms(notice_terms()),
+        LicenseSpec::new("LicenseRef-Gpl")
+            .name("GPL")
+            .terms(source_disclosure_terms()),
+    ]);
+    let cfg = config();
+
+    // When generating the BOM.
+    let bom = generated(
+        &ctx(&svc, &cfg, root),
+        &["LicenseRef-Mit", "LicenseRef-CcBy", "LicenseRef-Gpl"],
+    );
+
+    // Then all 3 licenses appear in the summary.
+    assert!(
+        bom.contains("LicenseRef-Mit"),
+        "MIT summary missing:\n{bom}"
+    );
+    assert!(
+        bom.contains("LicenseRef-CcBy"),
+        "CC-BY summary missing:\n{bom}"
+    );
+    assert!(
+        bom.contains("LicenseRef-Gpl"),
+        "GPL summary missing:\n{bom}"
+    );
+
+    // And action items reference both the notice and source obligations.
+    assert!(
+        bom.contains("NOTICES.md"),
+        "notice action item missing:\n{bom}"
+    );
+    assert!(
+        bom.contains("Offer corresponding source"),
+        "source disclosure action item missing:\n{bom}"
+    );
+    assert!(
+        bom.contains("gpl.glb"),
+        "GPL asset path missing from action items:\n{bom}"
+    );
+    // No share-alike, so no conflict warning.
+    assert!(!bom.contains("Multiple share-alike"));
+}
+
+// The audit gate blocks BOM generation when audit fails (e.g. unknown license).
+#[test]
+fn bom_generation_fails_when_audit_has_failures() {
+    // Given an asset referencing a license NOT in the registry (UnknownLicense FAIL).
+    let tree = temptree! {
+        "broken.glb": "binary",
+        "broken.glb.attr.toml": r#"
+title = "Broken"
+author = "X"
+year = 2022
+license = "LicenseRef-Nonexistent"
+source = "https://x"
+"#,
+    };
+    let root = tree.path();
+    // Registry has only MIT, not the Nonexistent license the asset references.
+    let svc = services_with([LicenseSpec::new("LicenseRef-Mit")]);
+    let cfg = config();
+    let out = root.join("BOM.md");
+
+    // When generating the BOM.
+    let result = generate_bom(&ctx(&svc, &cfg, root), &out);
+
+    // Then it fails (audit gate), and no BOM.md is written.
+    assert!(
+        result.is_err(),
+        "expected BOM generation to fail on audit failure"
+    );
+    assert!(
+        !out.exists(),
+        "BOM.md should not be written on audit failure"
     );
 }
