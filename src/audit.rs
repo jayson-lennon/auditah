@@ -138,7 +138,11 @@ fn check_license_text(asset: &Path, license_id: &str, ctx: &AuditCtx, report: &m
     }
 }
 
-/// Obligation verification: checkable obligations Fail; uncheckable ones Flag.
+/// Obligation verification: audit either passes or fails. Checkable
+/// obligations produce a Fail finding; obligations that cannot be
+/// auto-verified (source disclosure, share-alike, license notice) produce
+/// no finding here — they are documented on the terms, auto-complied by
+/// `credits`/`NOTICES`, or gated by `manual_review`.
 fn check_obligations(
     asset: &Path,
     record: &crate::model::attribution::AttributionRecord,
@@ -152,7 +156,6 @@ fn check_obligations(
     check_redistribution_boundary(asset, terms, config, report);
     check_derivatives_boundary(asset, record, terms, report);
     check_manual_review(asset, license_id, terms, config, report);
-    check_manual_review_flags(asset, terms, report);
 }
 
 /// Attribution: needs title + author + source when the obligation is set.
@@ -217,8 +220,10 @@ fn check_redistribution_boundary(
 
 /// Derivatives boundary: a single exhaustive match over the [`Derivatives`] enum.
 ///
-/// `Disallowed` + `modified` is a Fail; `ShareAlike` surfaces a review Flag;
-/// `Allowed` is clean. No dead branches — the match is exhaustive by construction.
+/// `Disallowed` + `modified` is a Fail; `Allowed` and `ShareAlike` are clean.
+/// The `ShareAlike` variant is retained to document the obligation and drive
+/// `credits`/`NOTICES`/`bom`; it produces no audit finding. No dead branches —
+/// the match is exhaustive by construction.
 fn check_derivatives_boundary(
     asset: &Path,
     record: &crate::model::attribution::AttributionRecord,
@@ -236,14 +241,7 @@ fn check_derivatives_boundary(
                 ));
             }
         }
-        Derivatives::Allowed => {}
-        Derivatives::ShareAlike => {
-            report.push(Finding::flag(
-                FindingCode::ShareAlikeReview,
-                asset.to_path_buf(),
-                "license requires share-alike; confirm distribution license compatibility",
-            ));
-        }
+        Derivatives::Allowed | Derivatives::ShareAlike => {}
     }
 }
 
@@ -267,28 +265,6 @@ fn check_manual_review(
             format!(
                 "license {license_id:?} requires manual review; add it to `manual_review_acknowledged` in auditah.toml after review"
             ),
-        ));
-    }
-}
-
-/// Manual-review flags: obligations the auditor cannot auto-verify, surfaced for human action.
-fn check_manual_review_flags(
-    asset: &Path,
-    terms: &crate::model::terms::LicenseTerms,
-    report: &mut AuditReport,
-) {
-    if terms.requires_source_disclosure {
-        report.push(Finding::flag(
-            FindingCode::SourceDisclosureReview,
-            asset.to_path_buf(),
-            "license requires source disclosure; confirm source is offered on distribution",
-        ));
-    }
-    if terms.requires_license_notice {
-        report.push(Finding::flag(
-            FindingCode::LicenseNoticeReview,
-            asset.to_path_buf(),
-            "license requires reproducing the license notice; confirm it ships",
         ));
     }
 }

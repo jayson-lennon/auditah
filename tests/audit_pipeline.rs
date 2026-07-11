@@ -6,13 +6,14 @@
 use temptree::temptree;
 
 mod common;
-use auditah::audit::report::{FindingCode, Severity};
+use auditah::audit::report::FindingCode;
 use auditah::audit::{run_audit, AuditCtx};
 use auditah::config::Config;
 use auditah::model::terms::{Derivatives, LicenseTerms};
 use auditah::registry::LicenseSpec;
 use common::{
     codes_for, non_commercial_config, permissive_terms, seed_license_text, services_with,
+    share_alike_terms,
 };
 
 fn ccby_services() -> auditah::services::Services {
@@ -225,9 +226,10 @@ derivatives = "disallowed"
     );
 }
 
-// Test case 10: derivatives="share-alike" (via override) → FLAG, not Fail.
+// Test case 10: derivatives="share-alike" (via override) → clean pass.
+// Share-alike no longer produces a finding (documented on terms; gated by manual_review).
 #[test]
-fn share_alike_is_flag_not_fail() {
+fn share_alike_override_passes_cleanly() {
     // Given a CC-BY asset overridden to share-alike, with licenses seeded.
     let tree = temptree! {
         "viral.glb": "binary",
@@ -255,16 +257,11 @@ derivatives = "share-alike"
     // When running the audit.
     let report = run_audit(&ctx).unwrap();
 
-    // Then the asset is FLAGged (ShareAlikeReview) but does not FAIL.
-    let viral_fail = report
-        .findings
-        .iter()
-        .any(|f| f.asset.to_string_lossy().contains("viral") && f.severity == Severity::Fail);
-    assert!(!viral_fail, "share-alike must FLAG, not FAIL");
+    // Then the asset is clean — share-alike produces no finding.
     let codes = codes_for(&report, "viral");
     assert!(
-        codes.contains(&FindingCode::ShareAlikeReview),
-        "expected ShareAlikeReview FLAG, got {codes:?}"
+        codes.is_empty(),
+        "expected no findings for share-alike override, got {codes:?}"
     );
     assert!(!report.has_failures());
 }
@@ -510,12 +507,13 @@ fn manual_review_passes_when_acknowledged() {
     );
 }
 
-// Test case 13: embedded OFL-1.1 (share-alike, no override) audits with
-// ShareAlikeReview FLAG and no FAIL — parity with pre-redesign behavior.
+// Test case 13: a share-alike license (not manual_review) audits clean.
+// Share-alike produces no finding post-FLAG-removal; it only documents the
+// obligation. (The OFL grid ships manual_review=true separately.)
 #[test]
-fn embedded_ofl_audits_as_share_alike_flag_not_fail() {
-    // Given an asset using the embedded OFL-1.1 license directly (no override),
-    // with seeded LICENSES/ text so MissingLicenseText does not fire.
+fn share_alike_license_audits_clean() {
+    // Given an asset using a share-alike license (not manual_review), with
+    // seeded LICENSES/ text so MissingLicenseText does not fire.
     let tree = temptree! {
         "font.ttf": "binary",
         "font.ttf.attr.toml": r#"
@@ -540,16 +538,114 @@ source = "https://example.com"
     // When running the audit.
     let report = run_audit(&ctx).unwrap();
 
-    // Then the embedded OFL-1.1 entry (derivatives = "share-alike") surfaces
-    // ShareAlikeReview as a non-blocking FLAG, and the audit does not FAIL.
+    // Then the share-alike license produces no finding.
     let codes = codes_for(&report, "font");
     assert!(
-        codes.contains(&FindingCode::ShareAlikeReview),
-        "expected ShareAlikeReview FLAG for embedded OFL, got {codes:?}"
+        codes.is_empty(),
+        "expected no findings for share-alike license, got {codes:?}"
     );
     assert!(
         !report.has_failures(),
-        "expected OFL audit clean (FLAG only), got failures: {:?}",
+        "expected clean audit, got failures: {:?}",
         report.findings
     );
+}
+
+// Test case 14: CC-BY-SA-4.0 (share-alike + manual_review) acked → clean pass.
+// Confirms share-alike alone produces no finding once the manual_review gate is cleared.
+#[test]
+fn cc_by_sa_acked_passes_cleanly() {
+    // Given an asset using a CC-BY-SA-4.0-style license (manual_review + share-alike)
+    // that IS acknowledged in config.
+    let tree = temptree! {
+        "mesh.glb": "binary",
+        "mesh.glb.attr.toml": r#"
+title = "Mesh"
+author = "A"
+year = 2024
+license = "LicenseRef-CcBySa"
+source = "https://example.com"
+"#,
+        "LICENSES": {
+            "LicenseRef-CcBySa.txt": "cc-by-sa text\n"
+        },
+    };
+    let root = tree.path();
+    let svc = services_with([LicenseSpec::new("LicenseRef-CcBySa").terms(LicenseTerms {
+        manual_review: true,
+        ..share_alike_terms()
+    })]);
+    let cfg = Config {
+        commercial_project: false,
+        redistributes_assets: false,
+        manual_review_acknowledged: vec!["LicenseRef-CcBySa".to_string()],
+        exclude: Vec::new(),
+    };
+    let ctx = AuditCtx {
+        services: &svc,
+        config: &cfg,
+        root,
+    };
+
+    // When running the audit.
+    let report = run_audit(&ctx).unwrap();
+
+    // Then the asset is clean — share-alike + source obligations produce no finding,
+    // and manual_review is satisfied by the acknowledgement.
+    let codes = codes_for(&report, "mesh");
+    assert!(
+        codes.is_empty(),
+        "expected no findings for acked CC-BY-SA, got {codes:?}"
+    );
+    assert!(!report.has_failures());
+}
+
+// Test case 15: GPL-3.0-only (source disclosure + manual_review) acked → clean pass.
+// Confirms requires_source_disclosure produces no finding once manual_review is cleared.
+#[test]
+fn gpl_acked_passes_cleanly() {
+    // Given an asset using a GPL-style license (manual_review + source disclosure)
+    // that IS acknowledged in config.
+    let tree = temptree! {
+        "lib.so": "binary",
+        "lib.so.attr.toml": r#"
+title = "Lib"
+author = "A"
+year = 2024
+license = "LicenseRef-Gpl"
+source = "https://example.com"
+"#,
+        "LICENSES": {
+            "LicenseRef-Gpl.txt": "gpl text\n"
+        },
+    };
+    let root = tree.path();
+    let svc = services_with([LicenseSpec::new("LicenseRef-Gpl").terms(LicenseTerms {
+        manual_review: true,
+        requires_source_disclosure: true,
+        ..share_alike_terms()
+    })]);
+    let cfg = Config {
+        commercial_project: false,
+        redistributes_assets: false,
+        manual_review_acknowledged: vec!["LicenseRef-Gpl".to_string()],
+        exclude: Vec::new(),
+    };
+    let ctx = AuditCtx {
+        services: &svc,
+        config: &cfg,
+        root,
+    };
+
+    // When running the audit.
+    let report = run_audit(&ctx).unwrap();
+
+    // Then the asset is clean — source disclosure produces no finding,
+    // and manual_review is satisfied by the acknowledgement.
+    let codes = codes_for(&report, "lib");
+    assert!(
+        codes.is_empty(),
+        "expected no findings for acked GPL, got {codes:?}"
+    );
+    assert!(!report.has_failures());
 }

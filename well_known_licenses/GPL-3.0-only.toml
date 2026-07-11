@@ -10,7 +10,7 @@ derivatives = "share-alike"
 requires_modification_notice = false
 allows_commercial_use = true
 allows_redistribution = true
-manual_review = false
+manual_review = true
 
 # GPL-3.0's source-disclosure obligation fires on binary distribution: anyone
 # who receives a binary must be offered the corresponding source under GPL-3.0.

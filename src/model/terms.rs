@@ -50,7 +50,7 @@ pub struct LicenseTerms {
     pub requires_attribution: bool,
     /// You MUST reproduce the license text in your distribution.
     pub requires_license_notice: bool,
-    /// You MUST offer corresponding source code on distribution. Auto-unverifiable → FLAG.
+    /// You MUST offer corresponding source code on distribution. Tracked in the BOM; no audit finding.
     pub requires_source_disclosure: bool,
     /// Derivatives dimension: `Disallowed` | `Allowed` | `ShareAlike`.
     pub derivatives: Derivatives,
