@@ -1,7 +1,7 @@
 //! `auditah add` — scaffold a sidecar for a single asset.
 
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::model::terms::Overrides;
 use crate::AppError;
@@ -46,7 +46,7 @@ pub struct AddCmd {
 /// Returns an error if field prompting, services, or the sidecar write fail.
 pub fn run(cmd: &AddCmd) -> Result<CommandStatus, Report<AppError>> {
     let record = build_record(cmd).change_context(AppError)?;
-    let root = cmd.file.parent().unwrap_or(std::path::Path::new("."));
+    let root = cmd.file.parent().unwrap_or(Path::new("."));
     let services = Services::real(root).change_context(AppError)?;
     write_sidecar(&services, &cmd.file, &record).change_context(AppError)?;
     println!("add: wrote {}.attr.toml", cmd.file.display());

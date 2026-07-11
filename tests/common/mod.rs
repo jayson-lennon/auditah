@@ -7,6 +7,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 #![allow(dead_code)]
 
+use std::path::Path;
 use std::sync::Arc;
 
 use auditah::audit::report::{AuditReport, FindingCode};
@@ -55,7 +56,7 @@ pub fn services_empty() -> Services {
 /// The registry builder handles the `.toml` grids; this handles the legal
 /// text files that audit's `MissingLicenseText` check gates on. Call after
 /// building the registry when a test needs the text-check to pass.
-pub fn seed_license_text(root: &std::path::Path, ids: &[&str]) {
+pub fn seed_license_text(root: &Path, ids: &[&str]) {
     let dir = root.join("LICENSES");
     std::fs::create_dir_all(&dir).expect("create LICENSES dir");
     for id in ids {
@@ -67,7 +68,7 @@ pub fn seed_license_text(root: &std::path::Path, ids: &[&str]) {
 /// (`LICENSES/<id>.toml`) and the text (`LICENSES/<id>.txt`).
 ///
 /// CLI/run tests that need a real `LicenseRegistry::load` to succeed use this.
-pub fn seed_license(root: &std::path::Path, id: &str) {
+pub fn seed_license(root: &Path, id: &str) {
     let dir = root.join("LICENSES");
     std::fs::create_dir_all(&dir).expect("create LICENSES dir");
     LicenseRegistry::builder()

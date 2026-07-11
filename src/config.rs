@@ -1,5 +1,7 @@
 //! Project configuration (`auditah.toml`): commercial-use flag + exclude globs.
 
+use std::path::Path;
+
 use error_stack::{Report, ResultExt};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
@@ -60,7 +62,7 @@ impl Config {
     /// # Errors
     ///
     /// Returns an error if the file exists but cannot be read or parsed.
-    pub fn load(fs: &FsService, root: &std::path::Path) -> Result<Self, Report<ConfigError>> {
+    pub fn load(fs: &FsService, root: &Path) -> Result<Self, Report<ConfigError>> {
         let path = root.join(CONFIG_FILENAME);
         if !fs.exists(&path) {
             return Ok(Self::default());

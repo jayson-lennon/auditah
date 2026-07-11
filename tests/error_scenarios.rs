@@ -18,7 +18,7 @@ use auditah::services::fs::FsService;
 use auditah::services::Services;
 use auditah::test_support::FakeFs;
 use error_stack::Report;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use temptree::temptree;
 
@@ -432,7 +432,7 @@ fn add_cmd_run_returns_err_on_write_failure() {
 fn audit_cmd_missing_root_returns_err_exit_two() {
     // Given a root path that does not exist.
     let cmd = AuditCmd {
-        root: std::path::PathBuf::from("/nonexistent/auditah/path/xyz"),
+        root: PathBuf::from("/nonexistent/auditah/path/xyz"),
     };
 
     // When running the audit command.

@@ -196,7 +196,7 @@ mod tests {
         let fs = RealFs::new();
 
         // When walking a nonexistent root.
-        let result = fs.walk(std::path::Path::new("/nonexistent-auditah-root-xyz"));
+        let result = fs.walk(Path::new("/nonexistent-auditah-root-xyz"));
 
         // Then the walk returns an error.
         assert!(result.is_err());
@@ -210,18 +210,13 @@ mod tests {
         let fs = FakeFs::with_files([("root/a.glb", "bytes"), ("root/sub/b.glb", "bytes")]);
 
         // When walking root recursively.
-        let mut got = fs
-            .walk(std::path::Path::new("root"))
-            .expect("walk readable root");
+        let mut got = fs.walk(Path::new("root")).expect("walk readable root");
 
         // Then only the files are returned (directories excluded).
         got.sort();
         assert_eq!(
             got,
-            vec![
-                std::path::PathBuf::from("root/a.glb"),
-                std::path::PathBuf::from("root/sub/b.glb"),
-            ]
+            vec![PathBuf::from("root/a.glb"), PathBuf::from("root/sub/b.glb"),]
         );
     }
 }

@@ -2,6 +2,8 @@
 //! Asserts on the generated CREDITS.md content (the public contract).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::path::Path;
+
 use auditah::config::Config;
 use auditah::credits::{generate_credits, CreditsCtx};
 use auditah::services::Services;
@@ -20,7 +22,7 @@ fn generated(ctx: &CreditsCtx) -> String {
     std::fs::read_to_string(&out).expect("CREDITS.md should be readable")
 }
 
-fn ctx<'a>(svc: &'a Services, cfg: &'a Config, root: &'a std::path::Path) -> CreditsCtx<'a> {
+fn ctx<'a>(svc: &'a Services, cfg: &'a Config, root: &'a Path) -> CreditsCtx<'a> {
     CreditsCtx {
         services: svc,
         config: cfg,
