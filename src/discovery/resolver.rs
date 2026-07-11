@@ -18,14 +18,19 @@ pub struct ResolveError;
 pub const SIDECAR_SUFFIX: &str = ".attr.toml";
 
 /// Directory manifest filename.
-pub const MANIFEST_FILENAME: &str = "manifest.toml";
+pub const MANIFEST_FILENAME: &str = "_manifest.toml";
+
+/// Exclude glob matching the manifest at any depth. Kept adjacent to
+/// `MANIFEST_FILENAME` so a rename stays a one-place edit; the
+/// `manifest_exclude_glob_matches_filename` test guards against drift.
+pub const MANIFEST_EXCLUDE_GLOB: &str = "**/_manifest.toml";
 
 /// Where a resolved config came from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolutionSource {
     /// Resolved from an adjacent `<asset>.attr.toml` sidecar.
     Sidecar(PathBuf),
-    /// Resolved from the nearest ancestor `manifest.toml`.
+    /// Resolved from the nearest ancestor `_manifest.toml`.
     Manifest(PathBuf),
     /// No config found — the asset is uncovered.
     None,
@@ -52,7 +57,7 @@ pub fn sidecar_path(asset: &Path) -> PathBuf {
 }
 
 /// Walk up from the asset's directory; return the path of the first
-/// `manifest.toml` found, or `None` if none exists up to (and including) `root`.
+/// `_manifest.toml` found, or `None` if none exists up to (and including) `root`.
 fn find_nearest_manifest(fs: &FsService, asset: &Path, root: &Path) -> Option<PathBuf> {
     let start = asset.parent()?;
     let root_parent = root.parent().unwrap_or(root);
@@ -72,7 +77,7 @@ fn find_nearest_manifest(fs: &FsService, asset: &Path, root: &Path) -> Option<Pa
 
 /// Resolve a single asset's config. Precedence:
 /// 1. Adjacent `<asset>.attr.toml` sidecar.
-/// 2. Nearest ancestor `manifest.toml`.
+/// 2. Nearest ancestor `_manifest.toml`.
 /// 3. Uncovered (`None`).
 ///
 /// # Errors
@@ -245,7 +250,7 @@ source = "https://example.com"
         let fs = fs_with(&[
             ("/proj/assets/sword.glb", ""),
             (
-                "/proj/assets/manifest.toml",
+                "/proj/assets/_manifest.toml",
                 &fake_record_toml("LicenseRef-Cc0"),
             ),
         ]);
@@ -264,8 +269,8 @@ source = "https://example.com"
         let parent = fake_record_toml("LicenseRef-Cc0");
         let child = fake_record_toml("LicenseRef-Mit");
         let fs = fs_with(&[
-            ("/proj/manifest.toml", &parent),
-            ("/proj/sub/manifest.toml", &child),
+            ("/proj/_manifest.toml", &parent),
+            ("/proj/sub/_manifest.toml", &child),
             ("/proj/sub/sword.glb", ""),
         ]);
 
@@ -286,7 +291,7 @@ source = "https://example.com"
                 "/proj/sword.glb.attr.toml",
                 &fake_record_toml("LicenseRef-Mit"),
             ),
-            ("/proj/manifest.toml", &fake_record_toml("LicenseRef-Cc0")),
+            ("/proj/_manifest.toml", &fake_record_toml("LicenseRef-Cc0")),
         ]);
 
         // When resolving.

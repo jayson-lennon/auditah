@@ -22,7 +22,7 @@ year = 2020
 license = "LicenseRef-Mit"
 source = "https://example.com/sword"
 "#,
-        "manifest.toml": r#"
+        "_manifest.toml": r#"
 title = "Pack"
 author = "Quaternius"
 year = 2022
@@ -49,7 +49,7 @@ source = "https://example.com/pack"
 fn subdir_manifest_overrides_parent_manifest() {
     // Given a parent manifest and a subdir manifest with different licenses.
     let tree = temptree! {
-        "manifest.toml": r#"
+        "_manifest.toml": r#"
 title = "Parent"
 author = "P"
 year = 2020
@@ -57,7 +57,7 @@ license = "LicenseRef-Cc0"
 source = "https://example.com"
 "#,
         "sub": {
-            "manifest.toml": r#"
+            "_manifest.toml": r#"
 title = "Child"
 author = "C"
 year = 2021
@@ -87,7 +87,7 @@ source = "https://example.com/child"
 fn parent_manifest_is_fallback_when_no_subdir_config() {
     // Given a parent manifest and an uncovered subdir asset.
     let tree = temptree! {
-        "manifest.toml": r#"
+        "_manifest.toml": r#"
 title = "Parent"
 author = "P"
 year = 2020
@@ -163,7 +163,7 @@ fn sidecar_and_manifest_themselves_are_not_enumerated_as_assets() {
     let tree = temptree! {
         "sword.glb": "binary",
         "sword.glb.attr.toml": "metadata",
-        "manifest.toml": "metadata"
+        "_manifest.toml": "metadata"
     };
     let root = tree.path();
     let fs = real_fs();
@@ -234,4 +234,29 @@ source = "https://poly.pizza/m/download/Gunny-Sack"
         .unwrap()
         .to_string_lossy()
         .contains("Gunny Sack"));
+}
+
+#[test]
+fn legacy_manifest_toml_is_not_recognized() {
+    // Given a dir with a legacy manifest.toml (old name) and an asset with no sidecar.
+    let tree = temptree! {
+        "sword.glb": "binary",
+        "manifest.toml": r#"
+title = "Legacy"
+author = "L"
+year = 2020
+license = "LicenseRef-Cc0"
+source = "https://example.com"
+"#
+    };
+    let root = tree.path();
+    let fs = real_fs();
+    let asset = root.join("sword.glb");
+
+    // When resolving the asset.
+    let r = resolve(&fs, &asset, root).unwrap();
+
+    // Then the legacy manifest is ignored — the asset is uncovered.
+    assert_eq!(r.source, ResolutionSource::None);
+    assert!(r.record.is_none());
 }

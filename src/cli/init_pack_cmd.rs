@@ -1,4 +1,4 @@
-//! `auditah init-pack` — write a directory manifest.toml.
+//! `auditah init-pack` — write a directory `_manifest.toml`.
 
 use std::path::PathBuf;
 
@@ -7,13 +7,14 @@ use crate::AppError;
 use clap::Args;
 
 use crate::add::write_manifest;
+use crate::discovery::resolver::MANIFEST_FILENAME;
 use crate::model::attribution::AttributionRecord;
 use crate::services::Services;
 use error_stack::{Report, ResultExt};
 
 use super::CommandStatus;
 
-/// Write a `manifest.toml` covering a directory + its subdirs.
+/// Write a `_manifest.toml` covering a directory + its subdirs.
 #[derive(Debug, Args)]
 pub struct InitPackCmd {
     /// Directory to cover with a manifest.
@@ -73,6 +74,6 @@ pub fn run(cmd: &InitPackCmd) -> Result<CommandStatus, Report<AppError>> {
     };
     let services = Services::real(&cmd.dir).change_context(AppError)?;
     write_manifest(&services, &cmd.dir, &record).change_context(AppError)?;
-    println!("init-pack: wrote {}/manifest.toml", cmd.dir.display());
+    println!("init-pack: wrote {}/{MANIFEST_FILENAME}", cmd.dir.display());
     Ok(CommandStatus::Success)
 }

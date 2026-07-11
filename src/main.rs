@@ -31,7 +31,7 @@ enum Command {
     License(LicenseCmd),
     /// Generate all distribution artifacts (CREDITS.md, NOTICES.md, BOM.md).
     Generate(GenerateCmd),
-    /// Write a directory manifest.toml covering a folder.
+    /// Write a directory `_manifest.toml` covering a folder.
     InitPack(InitPackCmd),
 }
 

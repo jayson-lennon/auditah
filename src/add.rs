@@ -1,7 +1,7 @@
 //! `auditah add` / `auditah init-pack` — scaffold attribution files.
 //!
 //! Core writers take an [`AttributionRecord`] and produce a sidecar
-//! (`<asset>.attr.toml`) or a directory manifest (`manifest.toml`) via
+//! (`<asset>.attr.toml`) or a directory manifest (`_manifest.toml`) via
 //! `toml_edit`, so the emitted files carry human-readable field comments.
 
 use std::path::{Path, PathBuf};
@@ -10,6 +10,7 @@ use error_stack::{Report, ResultExt};
 use toml_edit::{table, value, DocumentMut};
 use wherror::Error;
 
+use crate::discovery::resolver::MANIFEST_FILENAME;
 use crate::model::attribution::AttributionRecord;
 use crate::model::terms::{Derivatives, Overrides};
 use crate::services::Services;
@@ -63,7 +64,7 @@ pub fn write_sidecar(
         .attach(sidecar.display().to_string())
 }
 
-/// Write a directory `manifest.toml` covering `dir` and its subtree.
+/// Write a directory `_manifest.toml` covering `dir` and its subtree.
 ///
 /// # Errors
 ///
@@ -73,7 +74,7 @@ pub fn write_manifest(
     dir: &Path,
     record: &AttributionRecord,
 ) -> Result<(), Report<AddError>> {
-    let manifest = dir.join("manifest.toml");
+    let manifest = dir.join(MANIFEST_FILENAME);
     let content = render_record(record);
     services
         .fs

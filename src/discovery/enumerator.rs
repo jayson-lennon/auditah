@@ -130,7 +130,7 @@ mod tests {
             "/proj/assets/sword.glb",
             "/proj/Cargo.toml",
             "/proj/sword.glb.attr.toml",
-            "/proj/assets/manifest.toml",
+            "/proj/assets/_manifest.toml",
             "/proj/target/debug/auditah",
         ]);
         let excludes = ExcludeMatcher::new(&crate::discovery::all_excludes(&[])).unwrap();
@@ -146,7 +146,7 @@ mod tests {
         assert!(names.contains(&"sword.glb".to_string()));
         assert!(!names.contains(&"Cargo.toml".to_string()));
         assert!(!names.contains(&"sword.glb.attr.toml".to_string()));
-        assert!(!names.contains(&"manifest.toml".to_string()));
+        assert!(!names.contains(&"_manifest.toml".to_string()));
         assert!(!names.iter().any(|n| n == "auditah"));
     }
 }

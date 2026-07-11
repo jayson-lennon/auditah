@@ -149,3 +149,23 @@ fn render_record_round_trips_into_audit_record() {
     // Then the parsed record equals the original.
     assert_eq!(parsed, rec);
 }
+
+// `init-pack` writes the manifest to the `_manifest.toml` filename.
+#[test]
+fn init_pack_writes_underscore_manifest() {
+    // Given a pack directory.
+    let tree = temptree! {
+        "pack": { "rock.glb": "b" }
+    };
+    let root = tree.path();
+    seed_license_text(root, &["LicenseRef-Asset"]);
+    let svc = services_with([LicenseSpec::new("LicenseRef-Asset")]);
+    let pack = root.join("pack");
+
+    // When writing a manifest for the pack.
+    write_manifest(&svc, &pack, &record("LicenseRef-Asset")).unwrap();
+
+    // Then the manifest is written as `_manifest.toml`, not the legacy name.
+    assert!(svc.fs.exists(&pack.join("_manifest.toml")));
+    assert!(!svc.fs.exists(&pack.join("manifest.toml")));
+}

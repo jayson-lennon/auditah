@@ -17,7 +17,7 @@ pub const DEFAULT_EXCLUDES: &[&str] = &[
     "**/.import/**",
     // Sidecars + manifests themselves (they are metadata, not assets)
     "**/*.attr.toml",
-    "**/manifest.toml",
+    resolver::MANIFEST_EXCLUDE_GLOB,
     // License definitions dir
     "**/LICENSES/**",
     // Build output
@@ -62,7 +62,8 @@ mod tests {
         // When spot-checking load-bearing entries.
         // Then sidecar, manifest, registry, and config are all excluded.
         assert!(DEFAULT_EXCLUDES.contains(&"**/*.attr.toml"));
-        assert!(DEFAULT_EXCLUDES.contains(&"**/manifest.toml"));
+        assert!(DEFAULT_EXCLUDES.contains(&resolver::MANIFEST_EXCLUDE_GLOB));
+        assert!(!DEFAULT_EXCLUDES.contains(&"**/manifest.toml"));
         assert!(DEFAULT_EXCLUDES.contains(&"**/LICENSES/**"));
         assert!(DEFAULT_EXCLUDES.contains(&"auditah.toml"));
         assert!(DEFAULT_EXCLUDES.contains(&"CREDITS.md"));
@@ -92,5 +93,13 @@ mod tests {
 
         // Then the result contains only the defaults.
         assert!(merged.len() == DEFAULT_EXCLUDES.len());
+    }
+
+    #[test]
+    fn manifest_exclude_glob_matches_filename() {
+        // Given the manifest filename and its exclude glob.
+        // When checking they stay in sync.
+        // Then the glob ends with the filename.
+        assert!(resolver::MANIFEST_EXCLUDE_GLOB.ends_with(resolver::MANIFEST_FILENAME));
     }
 }

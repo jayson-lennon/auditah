@@ -1,5 +1,5 @@
 //! Asset attribution record: the per-asset metadata that travels with an asset
-//! via a sidecar (`<name>.attr.toml`) or a directory manifest (`manifest.toml`).
+//! via a sidecar (`<name>.attr.toml`) or a directory manifest (`_manifest.toml`).
 
 use serde::{Deserialize, Serialize};
 
