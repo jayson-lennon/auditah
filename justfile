@@ -35,3 +35,10 @@ lint: audit
 # Run clippy lints.
 clippy:
     cargo clippy --all-targets -- -D warnings
+
+# Build the Arch package in ./build (isolated from the source tree).
+# Creates build/auditah-git-*.pkg.tar.zst. build/ is gitignored.
+pkg:
+    @mkdir -p build
+    @cp PKGBUILD build/
+    @cd build && makepkg -f
