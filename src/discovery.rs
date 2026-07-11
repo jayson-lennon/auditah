@@ -34,6 +34,7 @@ pub const DEFAULT_EXCLUDES: &[&str] = &[
     "Cargo.lock",
     "**/*.lock",
     "CREDITS.md",
+    "BOM.md",
     // Common non-asset config
     "**/justfile",
     "**/Justfile",
