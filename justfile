@@ -70,8 +70,11 @@ bump LEVEL:
     sed -i "s/^pkgver=.*/pkgver=$NEW/" PKGBUILD
     sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
+    # --- Regenerate Cargo.lock for the new version ---
+    cargo update -p auditah --precise "$NEW"
+
     # --- Commit, tag, push ---
-    git add Cargo.toml PKGBUILD
+    git add Cargo.toml Cargo.lock PKGBUILD
     git commit -m "Bump version to ${NEW}"
     git tag "v${NEW}"
     git push
