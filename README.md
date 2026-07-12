@@ -8,38 +8,92 @@ from a different premise: **a license is a set of obligations and permissions.**
 An auditor that can neither carry nor surface obligation data cannot audit
 compliance for any obligation-bearing license. auditah stores the full term set
 per license, verifies obligations are *fulfilled*, and surfaces the ones that
-can't be auto-checked as explicit flags.
+can't be auto-checked as explicit action items.
 
 ## Quickstart
 
 ```sh
-# Audit the current project for license compliance.
+# Audit the current project for license compliance (exit 1 on findings, 2 on error).
 auditah audit
 
-# Generate CREDITS.md from attribution sidecars and manifests.
-auditah credits
+# Generate CREDITS.md, NOTICES.md, BOM.md in one shot (audit-gated: refuses on a failing project).
+auditah generate
 
-# Scaffold a sidecar for one asset (interactive prompts).
-auditah add path/to/sword.glb
+# Scaffold a sidecar for one asset (interactive prompts for any field not passed on the CLI).
+auditah sidecar path/to/sword.glb --license CC-BY-4.0 --author "Author Name"
 
-# Cover an entire asset pack directory with one manifest.
+# Scaffold a license definition: well-known SPDX id extracts text + grid from the embedded corpus.
+auditah license MIT
+
+# Cover an entire asset pack directory with one `_manifest.toml`.
+auditah init-pack path/to/pack --license CC0-1.0 --author "Quaternius"
+```
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `audit` | Audit license compliance of assets. Exit 1 if any FAIL finding, 2 on technical error. |
+| `sidecar` | Scaffold an `<asset>.attr.toml` sidecar for a single asset. |
+| `license` | Scaffold a license definition in `LICENSES/` (`.toml` grid + `.txt` text). |
+| `generate` | Write CREDITS.md, NOTICES.md, BOM.md. Runs an audit gate first; no artifacts on a failing project. |
+| `init-pack` | Write a directory `_manifest.toml` covering a folder and its subdirs. |
+
+
+### Command flags
+
+```
+audit      [--root <DIR>]                                       # default: .
+sidecar    <FILE> [--title --author --year --license --source --modified]
+                                                                 # any omitted field is prompted interactively
+license    <NAME> [--custom] [--root <DIR>]                       # default root: .
+generate   [--root <DIR>] [--output-credits --output-notices --output-bom <FILE>]
+init-pack  <DIR> --license <ID> --author <NAME> [--year --title --source]
+```
+
+- `license <NAME>` (well-known): extracts the canonical `LICENSES/<id>.txt` +
+  `LICENSES/<id>.toml` grid from the embedded SPDX corpus in one step.
+- `license <NAME> --custom`: writes a `LicenseRef-<name>` placeholder grid using
+  the `default_fail()` baseline (all permissions false, `manual_review = true`).
+  Refuses if `<name>` collides with a well-known SPDX id (case-insensitive). Fill
+  in the grid, drop `LICENSES/LicenseRef-<name>.txt` alongside, and add the id to
+  `manual_review_acknowledged` when ready.
+- `generate` is audit-gated: it refuses to write any artifact if the project has
+  FAIL findings.
+
+Exit codes: `0` clean, `1` compliance failure (audit FAIL), `2` technical error.
 
 ## Project config — `auditah.toml`
 
 Placed at the project root:
 
 ```toml
-commercial_project = true   # FAILs assets with effective allows_commercial_use = false
-
+commercial_project = true          # FAILs assets whose effective allows_commercial_use = false
+redistributes_assets = false         # FAILs assets whose effective allows_redistribution = false
+manual_review_acknowledged = [       # SPDX ids whose manual_review obligation has been ack'd
+    "LicenseRef-StudioEULA",
+]
 exclude = [
     "src/**",        # your first-party source
-    "*.zip",         # exclude archives (default already excludes these)
     "vendor/**",     # anything you don't want audited
 ]
 ```
 
-When `commercial_project = true`, any asset whose effective terms set
-`allows_commercial_use = false` fails the audit.
+`commercial_project = true` — any asset whose effective terms set
+`allows_commercial_use = false` FAILs the audit.
+
+`redistributes_assets = true` — set this if you re-host or resell the raw asset
+itself (not just shipping it embedded in a product). Any asset whose effective
+terms set `allows_redistribution = false` then FAILs.
+
+`manual_review_acknowledged` — a license with `manual_review = true` FAILs until
+its id is listed here. Acknowledgment is permanent and silent.
+
+`exclude` — additional glob patterns (merged after the built-in default excludes).
+Matched against paths relative to the project root.
+
+Configuration is optional: an absent `auditah.toml` yields defaults (all flags
+false, both lists empty).
 
 ## Attribution that travels with the asset
 
@@ -62,13 +116,13 @@ modified = false
 
 Move or rename `sword.glb` and its `.attr.toml` together — no config edits needed.
 
-### Directory manifests — `manifest.toml`
+### Directory manifests — `_manifest.toml`
 
 A manifest covers its directory and all subdirectories, ideal for asset packs
 where every file shares one license:
 
 ```toml
-# pack/manifest.toml
+# pack/_manifest.toml
 title   = "Modular Dungeons Pack"
 author  = "Quaternius"
 year    = 2022
@@ -79,7 +133,7 @@ source  = "https://poly.pizza"
 ### Resolution precedence (most specific wins)
 
 1. **Sidecar** `<asset>.attr.toml` — overrides everything.
-2. **Nearest ancestor `manifest.toml`** — subdirectory manifests override
+2. **Nearest ancestor `_manifest.toml`** — subdirectory manifests override
    parent manifests.
 3. **None** — `audit` fails the asset as unlicensed.
 
@@ -136,20 +190,32 @@ allows_commercial_use = false   # opt this asset out of commercial use
 | `allows_redistribution = false` and `redistributes_assets = true` | **FAIL** — no redistribution |
 | `derivatives = "disallowed"` and `modified = true` | **FAIL** — no-derivatives |
 | Referenced license has no `LICENSES/<id>.txt` | **FAIL** — missing license text |
-| `derivatives = "share-alike"`, `requires_source_disclosure`, `requires_license_notice` | **FLAG** — needs human review |
 | `manual_review = true` and not in `manual_review_acknowledged` | **FAIL** — requires human review + ack |
 
-`audit` exits non-zero on any FAIL. FLAGs are reported but don't block.
+Some obligations aren't auto-verifiable by `audit` and so produce **no finding**;
+they're handled by the distribution artifacts instead:
+
+- `requires_source_disclosure` — surfaced as an action item in `BOM.md` (no finding).
+- `requires_license_notice` — satisfied automatically by `NOTICES.md` via `generate`.
+- `derivatives = "share-alike"` — the boolean grid can't verify relicensing; no
+  separate finding. Track it manually.
+
+`audit` exits non-zero on any FAIL. There are no non-blocking warnings.
 
 ## License registry
 
-auditah ships embedded definitions for CC0-1.0, CC-BY-3.0, MIT, and OFL-1.1. A
-project-local `licenses/` directory at the project root can override embedded
-entries (same id) or add new ones (e.g. `LicenseRef-StudioEULA`). Each license
-definition is a TOML file matching the `[terms]` shape above, plus `id`, `name`,
-`url`, and `text`.
+auditah embeds the SPDX license text corpus (814 `.txt` files) plus a set of
+authored obligation grids (`0BSD, Apache-2.0, BSD-2-Clause, BSD-3-Clause, CC0-1.0,
+CC-BY-4.0, CC-BY-ND-4.0, CC-BY-SA-4.0, GPL-3.0-only, ISC, LGPL-3.0-only, MIT,
+MPL-2.0, OFL-1.1`). At registry load, the authored grids are seeded first; a
+project-local `LICENSES/` directory at the project root then overrides embedded
+entries (same id) or adds new ones (e.g. `LicenseRef-StudioEULA`).
 
-### `LICENSES/` directory and `init-licenses`
+Each license definition is a TOML file matching the `[terms]` shape above, plus
+`id`, `name`, `url`, and optional `notes`. License **text** is always a separate
+`LICENSES/<id>.txt` file — there is no inline `text` field on the definition.
+
+### `LICENSES/` directory and `license`
 
 Every license referenced by any asset must have a full-text file at
 `LICENSES/<id>.txt` (e.g. `LICENSES/MIT.txt`, `LICENSES/LicenseRef-StudioEULA.txt`).
@@ -158,25 +224,33 @@ text file is missing. The on-disk files are authoritative: you can edit them (e.
 trim a license's boilerplate) and auditah will respect your edits.
 
 ```sh
-# Write LICENSES/<id>.txt for every license in the registry.
-# Idempotent: existing files with matching content are skipped. Divergent files
-# (human-edited) cause an error — on-disk text is never silently clobbered.
-auditah init-licenses
+# Scaffold a well-known SPDX license: extracts canonical text + authored grid
+# from the embedded corpus into LICENSES/.
+auditah license MIT
+
+# Scaffold a custom LicenseRef-* license (default_fail() placeholder grid).
+auditah license --custom StudioEULA
 ```
 
 **Workflow for a custom / bespoke license:**
 
-1. Author the registry definition at `licenses/LicenseRef-StudioEULA.toml` (same
-   shape as above, with your full `text` inline).
-2. Run `auditah init-licenses` — it writes `LICENSES/LicenseRef-StudioEULA.txt`
-   from the `text` field of your `.toml`.
-3. Reference the license by id (`license = "LicenseRef-StudioEULA"`) in sidecars
-   and manifests. The text file is now present and audit passes.
+1. Run `auditah license --custom StudioEULA` — it writes a `default_fail()`
+   placeholder grid at `LICENSES/LicenseRef-StudioEULA.toml` (every permission
+   false, `manual_review = true`).
+2. Edit the grid to fill in the real terms, and drop the legal text alongside at
+   `LICENSES/LicenseRef-StudioEULA.txt`.
+3. Add the id to `manual_review_acknowledged` in `auditah.toml` when you've
+   reviewed it.
+4. Reference the license by id (`license = "LicenseRef-StudioEULA"`) in sidecars
+   and manifests. The text file is present and audit passes.
 
 ## Building
 
 ```sh
 just build     # cargo build
-just test      # cargo test
+just test      # cargo nextest run
 just clippy    # cargo clippy --all-targets -- -D warnings
+just check     # cargo check (fast compile, no codegen)
+just fmt-check # cargo fmt -- --check
+just fmt-fix   # cargo fmt
 ```
