@@ -152,6 +152,10 @@ a specific asset (e.g. an author grants CC-BY but forbids commercial use):
 
 ```toml
 # fanfare.ogg.attr.toml
+#
+# Overrides merge field-by-field onto the license's terms. Set only the fields
+# that differ for this asset; everything else inherits from the license.
+# manual_review is license-only and cannot be overridden.
 title   = "Fanfare"
 author  = "Musician"
 year    = 2021
@@ -162,11 +166,6 @@ source  = "https://example.com"
 # Opt this asset out of commercial use.
 allows_commercial_use = false
 ```
-
-> **Override semantics:** overrides merge field-by-field onto the license's
-> terms. Set only the fields that differ for that asset; everything else
-> inherits from the license. `manual_review` is license-only and cannot be
-> overridden.
 
 ## What the audit checks
 
