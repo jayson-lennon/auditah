@@ -1,0 +1,18 @@
+id = "MPL-2.0-no-copyleft-exception"
+name = "Mozilla Public License 2.0, no copyleft exception"
+url = "https://spdx.org/licenses/MPL-2.0-no-copyleft-exception.html"
+
+[terms]
+requires_attribution = false
+requires_license_notice = true
+requires_source_disclosure = true
+derivatives = "share-alike"
+requires_modification_notice = false
+allows_commercial_use = true
+allows_redistribution = true
+manual_review = true
+
+# MPL-2.0 with the §3.3(b) "Incompatible With Secondary Licenses" carve-out
+# disabled via Exhibit B. The disabled clause affects an additional grant
+# (whether a Larger Work may be governed by a Secondary License such as GPL),
+# not the per-license duties, so the obligation grid matches MPL-2.0.

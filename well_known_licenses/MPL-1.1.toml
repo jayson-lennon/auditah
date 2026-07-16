@@ -1,0 +1,16 @@
+id = "MPL-1.1"
+name = "Mozilla Public License 1.1"
+url = "https://spdx.org/licenses/MPL-1.1.html"
+
+[terms]
+requires_attribution = false
+requires_license_notice = true
+requires_source_disclosure = true
+derivatives = "share-alike"
+requires_modification_notice = false
+allows_commercial_use = true
+allows_redistribution = true
+manual_review = true
+
+# MPL-1.1's source disclosure is file-level: modified MPL'd files must ship
+# their source. Copyleft does not extend across file boundaries.
