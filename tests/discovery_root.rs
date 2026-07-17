@@ -1,18 +1,18 @@
 //! Integration tests: project-root discovery (`find_project_root`).
 //!
-//! Verifies the LICENSES-dependent commands (`audit`, `generate`, `license`,
-//! `init-pack`) resolve an *ancestor* `LICENSES/` when invoked from a
-//! subdirectory, and hard-error (no fallback) when none exists. The hard-error
-//! message contract is covered in `error_scenarios.rs`; this file covers the
-//! resolve-upward success path end-to-end through each command's `run`.
+//! Verifies the LICENSES-dependent commands (`audit`, `generate`, `add-license`,
+//! and the merged `license` command) resolve an *ancestor* `LICENSES/` when
+//! invoked from a subdirectory, and hard-error (no fallback) when none exists.
+//! The hard-error message contract is covered in `error_scenarios.rs`; this
+//! file covers the resolve-upward success path end-to-end through each command's `run`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::path::PathBuf;
 
+use auditah::cli::add_license_cmd::{run as add_license_run, AddLicenseCmd};
 use auditah::cli::audit_cmd::{run as audit_run, AuditCmd};
 use auditah::cli::generate_cmd::{run as generate_run, GenerateCmd};
-use auditah::cli::init_pack_cmd::{run as init_pack_run, InitPackCmd};
 use auditah::cli::license_cmd::{run as license_run, LicenseCmd};
 use auditah::cli::CommandStatus;
 use temptree::temptree;
@@ -168,7 +168,7 @@ source = "https://example.com"
 // add-license resolves a LICENSES/ located above --root and writes the
 // license grid+text into the ANCESTOR project's LICENSES/, not the subdir.
 #[test]
-fn license_cmd_resolves_ancestor_licenses_from_subdir() {
+fn add_license_resolves_ancestor_licenses_from_subdir() {
     // Given a project with LICENSES/ at the root and a subdir beneath it.
     let tree = temptree! {
         "LICENSES": {},
@@ -177,12 +177,12 @@ fn license_cmd_resolves_ancestor_licenses_from_subdir() {
     let root = tree.path();
 
     // When adding a well-known license (MIT) with --root pointing at the subdir.
-    let cmd = LicenseCmd {
+    let cmd = AddLicenseCmd {
         name: "MIT".to_string(),
         custom: false,
         root: root.join("sub").clone(),
     };
-    let status = license_run(&cmd, root).expect("add-license should resolve ancestor LICENSES");
+    let status = add_license_run(&cmd, root).expect("add-license should resolve ancestor LICENSES");
 
     // Then it resolves the ancestor root and writes MIT into the ancestor LICENSES/.
     assert_eq!(
@@ -200,31 +200,32 @@ fn license_cmd_resolves_ancestor_licenses_from_subdir() {
     );
 }
 
-// init-pack hard-errors when the cwd has no ancestor LICENSES/ (cwd-coupled:
-// it walks up from current_dir(), not a --root flag).
+// `license <dir>` hard-errors when the target has no ancestor LICENSES/.
 #[test]
-fn init_pack_no_licenses_dir_returns_err() {
+fn license_dir_target_no_licenses_dir_returns_err() {
     // Given a directory with no LICENSES/ anywhere up the tree.
     let tree = temptree! {
-        "sword.glb": "binary",
+        "pack": {},
     };
     let root = tree.path();
-    let cmd = InitPackCmd {
-        license: "MIT".to_string(),
+    let cmd = LicenseCmd {
+        target: root.join("pack"),
+        id: "MIT".to_string(),
         author: "Artist".to_string(),
-        year: None,
         title: None,
+        year: None,
         source: None,
+        modified: false,
+        root: None,
     };
 
-    // When running init-pack with the injected cwd set to that directory
-    // (no process-cwd mutation).
-    let result = init_pack_run(&cmd, root);
+    // When running `license` against the pack dir with cwd = the pack dir.
+    let result = license_run(&cmd, &root.join("pack"));
 
     // Then it returns Err pointing the user at `auditah init`.
     assert!(
         result.is_err(),
-        "init-pack must hard-error when no ancestor LICENSES/ exists"
+        "license <dir> must hard-error when no ancestor LICENSES/ exists"
     );
     let rendered = format!("{:?}", result.expect_err("err"));
     assert!(
@@ -233,41 +234,44 @@ fn init_pack_no_licenses_dir_returns_err() {
     );
 }
 
-// init-pack discovers an ancestor LICENSES/ from the injected cwd (not
-// process cwd), provisions the license there, and writes the manifest into
-// the injected cwd. Locks the full decoupled success path.
+// `license <dir>` discovers an ancestor LICENSES/ from the target, provisions
+// the license there, and writes the manifest into the target directory. This
+// replaces the old cwd-coupled init-pack success path with the target-based
+// directory branch of the merged `license` command.
 #[test]
-fn init_pack_resolves_ancestor_licenses_and_writes_manifest_in_cwd() {
+fn license_dir_resolves_ancestor_licenses_and_writes_manifest_in_target() {
     // Given a project with LICENSES/ at the root and a subdir beneath it.
     let tree = temptree! {
         "LICENSES": {},
         "sub": {},
     };
     let root = tree.path();
-    let cmd = InitPackCmd {
-        license: "MIT".to_string(),
+    let cmd = LicenseCmd {
+        target: root.join("sub"),
+        id: "MIT".to_string(),
         author: "Artist".to_string(),
-        year: None,
         title: None,
+        year: None,
         source: None,
+        modified: false,
+        root: None,
     };
 
-    // When running init-pack with the injected cwd pointing at the subdir
-    // (discovery must walk up from cwd to find LICENSES/, no process-cwd mutation).
-    let status = init_pack_run(&cmd, &root.join("sub"))
-        .expect("init-pack should resolve ancestor LICENSES and succeed");
+    // When running `license sub` (discovery walks up from the target subdir
+    // to find LICENSES/, no process-cwd mutation).
+    let status = license_run(&cmd, root)
+        .expect("license <dir> should resolve ancestor LICENSES and succeed");
 
     // Then it returns Success.
     assert_eq!(
         status,
         CommandStatus::Success,
-        "subdir init-pack must resolve the ancestor LICENSES, not fail"
+        "subdir license <dir> must resolve the ancestor LICENSES, not fail"
     );
-    // And the manifest is written into the injected cwd (the subdir), not the
-    // project root.
+    // And the manifest is written into the target directory (the subdir).
     assert!(
         root.join("sub/_manifest.toml").exists(),
-        "manifest must be written to the injected cwd (subdir)"
+        "manifest must be written into the target dir (subdir)"
     );
     // And the license was provisioned into the ANCESTOR LICENSES/.
     assert!(

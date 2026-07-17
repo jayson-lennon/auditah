@@ -1,5 +1,5 @@
-//! `auditah add` / `auditah init-pack` — scaffold attribution files.
-//!
+//! Shared attribution writers for the `auditah license` command:
+//! the file sidecar (`<asset>.attr.toml`) and the directory manifest (`_manifest.toml`).
 //! Core writers take an [`AttributionRecord`] and produce a sidecar
 //! (`<asset>.attr.toml`) or a directory manifest (`_manifest.toml`) via
 //! `toml_edit`, so the emitted files carry human-readable field comments.

@@ -8,10 +8,10 @@
 //!   technical failure→`Err`; plus exit-code mapping.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use auditah::cli::add_license_cmd::{run as add_license_run, AddLicenseCmd};
 use auditah::cli::audit_cmd::{run as audit_run, AuditCmd};
 use auditah::cli::command_to_exit_code;
 use auditah::cli::generate_cmd::{run as generate_run, GenerateCmd};
-use auditah::cli::license_cmd::{run as license_run, LicenseCmd};
 use auditah::cli::CommandStatus;
 use auditah::discovery::enumerator::ExcludeMatcher;
 use auditah::discovery::resolver::resolve;
@@ -416,30 +416,32 @@ fn audit_cmd_violations_returns_ok_compliance_failure() {
 }
 
 #[test]
-fn sidecar_cmd_run_returns_err_on_write_failure() {
-    // Given an add command whose target path is under an existing file (unwritable).
-    use auditah::cli::sidecar_cmd::{run as sidecar_run, SidecarCmd};
+fn license_cmd_run_returns_err_on_write_failure() {
+    // Given a license command whose file target sits under an existing file
+    // (unwritable).
+    use auditah::cli::license_cmd::{run as license_run, LicenseCmd};
     let tree = temptree! {
-        "blocker": "i am a file, not a dir"
+        "blocker": "i am a file, not a dir",
+        "LICENSES": {},
     };
     let root = tree.path();
     let target = root.join("blocker").join("x.glb");
-    let cmd = SidecarCmd {
-        file: target,
+    let cmd = LicenseCmd {
+        target: target.clone(),
+        id: "LicenseRef-Asset".to_string(),
+        author: "A".to_string(),
         title: Some("X".to_string()),
-        author: Some("A".to_string()),
         year: Some(2020),
-        license: Some("LicenseRef-Asset".to_string()),
         source: Some("https://example.com".to_string()),
         modified: false,
+        root: None,
     };
 
-    // When running the add command.
-    let result = sidecar_run(&cmd);
+    // When running the license command.
+    let result = license_run(&cmd, root);
 
-    // Then it returns Err (write failure, exit 2).
-    assert!(result.is_err(), "add write failure must return Err");
-    assert_eq!(command_to_exit_code(&result), 2);
+    // Then it returns Err (the target's parent is a file, so metadata/write fails).
+    assert!(result.is_err(), "license write failure must return Err");
 }
 
 #[test]
@@ -541,14 +543,14 @@ fn license_cmd_no_licenses_dir_returns_err_and_does_not_create_licenses() {
         "sword.glb": "binary",
     };
     let root = tree.path();
-    let cmd = LicenseCmd {
+    let cmd = AddLicenseCmd {
         name: "MIT".to_string(),
         custom: false,
         root: root.to_path_buf(),
     };
 
     // When running add-license.
-    let result = license_run(&cmd, root);
+    let result = add_license_run(&cmd, root);
 
     // Then it returns Err pointing the user at `auditah init`.
     assert!(

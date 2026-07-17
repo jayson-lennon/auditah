@@ -9,6 +9,10 @@ use wherror::Error;
 use crate::model::terms::LicenseTerms;
 use crate::services::Services;
 
+use crate::services::clock::ClockService;
+use crate::well_known::{self, ResolveResult};
+use crate::AppError;
+
 /// Error writing a license template.
 #[derive(Debug, Error)]
 #[error(debug)]
@@ -297,4 +301,222 @@ pub fn write_text(
         .change_context(AddLicenseError)
         .attach("failed to write license text")?;
     Ok(path)
+}
+
+/// Provision the requested license into `licenses_dir` if it is absent.
+///
+/// Matrix: already-present -> skip; well-known -> install text + grid;
+/// unknown/custom -> hard error pointing at `add-license --custom`.
+///
+/// `licenses_dir` is the discovered `LICENSES/` directory; the project root is
+/// derived as its parent.
+///
+/// # Errors
+///
+/// Returns an error if the license is not present and not a known SPDX id, or
+/// if the text/grid writes fail.
+pub(crate) fn provision_license(
+    services: &Services,
+    licenses_dir: &Path,
+    license_id: &str,
+) -> Result<(), Report<AppError>> {
+    // write_grid/license_grid_path take the PROJECT ROOT (they join "LICENSES").
+    let project_root = licenses_dir.parent().unwrap_or(Path::new("."));
+    let grid_path = license_grid_path(project_root, license_id);
+    if grid_path.exists() {
+        return Ok(());
+    }
+
+    match well_known::resolve(license_id) {
+        ResolveResult::NotFound => Err(Report::new(AppError)
+            .attach(format!(
+                "license {license_id:?} is not in LICENSES/ and is not a known SPDX id"
+            ))
+            .attach("run `auditah add-license --custom <name>` to create it first")),
+        ResolveResult::Found(canonical) => {
+            let text = well_known::extract_text(&canonical);
+            write_text(services, project_root, &canonical, &text).change_context(AppError)?;
+            let grid = well_known::extract_grid(&canonical)
+                .unwrap_or_else(|| render_license_template(&canonical));
+            write_grid(services, project_root, &canonical, &grid).change_context(AppError)?;
+            eprintln!("provisioned {canonical} into LICENSES/");
+            Ok(())
+        }
+    }
+}
+
+/// Resolve the copyright year when `--year` is omitted: read the wall
+/// clock via `clock` and map epoch seconds to a calendar year. On a broken
+/// or pre-epoch clock, fall back to `2026`.
+pub(crate) fn year_from_clock(clock: &ClockService) -> u16 {
+    clock.now_epoch_secs().map_or(2026, year_from_epoch_secs)
+}
+
+/// Map Unix epoch seconds to an approximate calendar year.
+///
+/// Uses a Julian year (`31_557_600` seconds); year-boundary drift of ±1 day
+/// is acceptable for copyright-year attribution.
+pub(crate) fn year_from_epoch_secs(secs: u64) -> u16 {
+    u16::try_from(secs / 31_557_600 + 1970).unwrap_or(2026)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use crate::services::clock::ClockService;
+    use crate::test_support::FakeClock;
+    use std::sync::Arc;
+    use temptree::temptree;
+
+    #[test]
+    fn year_from_epoch_secs_maps_a_known_past_year() {
+        // Given epoch seconds for 2019-01-01.
+        let secs = 1_546_322_400;
+
+        // When mapping to a year.
+        let year = year_from_epoch_secs(secs);
+
+        // Then the year is 2019.
+        assert_eq!(year, 2019);
+    }
+
+    #[test]
+    fn year_from_epoch_secs_maps_a_current_era_year() {
+        // Given epoch seconds for 2025-01-01.
+        let secs = 1_735_689_600;
+
+        // When mapping to a year.
+        let year = year_from_epoch_secs(secs);
+
+        // Then the year is 2025.
+        assert_eq!(year, 2025);
+    }
+
+    #[test]
+    fn year_from_epoch_secs_maps_epoch_zero_to_1970() {
+        // Given the epoch itself.
+        let secs = 0;
+
+        // When mapping to a year.
+        let year = year_from_epoch_secs(secs);
+
+        // Then the year is 1970, not 0 (the original off-by-1970 bug).
+        assert_eq!(year, 1970);
+    }
+
+    #[test]
+    fn year_from_epoch_secs_falls_back_when_future_overflows_u16() {
+        // Given an absurd future timestamp that would overflow u16.
+        let secs = u64::MAX;
+
+        // When mapping to a year.
+        let year = year_from_epoch_secs(secs);
+
+        // Then the year is the 2026 fallback rather than panicking.
+        assert_eq!(year, 2026);
+    }
+
+    #[test]
+    fn year_from_clock_maps_a_fixed_instant_to_its_year() {
+        // Given a FakeClock pinned to a 2019-01-01 epoch-second instant.
+        let clock = ClockService::new(Arc::new(FakeClock::fixed(1_546_322_400)));
+
+        // When resolving the default year from the clock.
+        let year = year_from_clock(&clock);
+
+        // Then the year is 2019 (not 56 / 0 — the original bug).
+        assert_eq!(year, 2019);
+    }
+
+    #[test]
+    fn year_from_clock_falls_back_to_2026_when_clock_is_broken() {
+        // Given a FakeClock that always fails (models a pre-epoch clock).
+        let clock = ClockService::new(Arc::new(FakeClock::broken()));
+
+        // When resolving the default year from the broken clock.
+        let year = year_from_clock(&clock);
+
+        // Then the year is the 2026 fallback rather than erroring or panicking.
+        assert_eq!(year, 2026);
+    }
+
+    // --- Provisioning matrix (provision_license) ---
+    //
+    // These exercise the four-cell matrix directly; provision_license is the
+    // observable behavior under test. Each test pins one cell.
+
+    fn empty_project_with_licenses() -> (tempfile::TempDir, std::path::PathBuf) {
+        let tree = temptree! { LICENSES: {} };
+        let root = tree.path().to_path_buf();
+        (tree, root)
+    }
+
+    #[test]
+    fn provision_skips_when_license_grid_already_present() {
+        // Given a project whose LICENSES/ already has MIT.toml.
+        let (_tree, root) = empty_project_with_licenses();
+        std::fs::write(
+            root.join("LICENSES/MIT.toml"),
+            "id = \"MIT\"\nname = \"handwritten\"\nurl = \"https://x\"\n[terms]\nrequires_attribution = false\nrequires_license_notice = true\nrequires_source_disclosure = false\nderivatives = \"allowed\"\nrequires_modification_notice = false\nallows_commercial_use = true\nallows_redistribution = true\nmanual_review = false\n",
+        )
+        .unwrap();
+        let svc = Services::real(&root).unwrap();
+        let original = std::fs::read_to_string(root.join("LICENSES/MIT.toml")).unwrap();
+
+        // When provisioning MIT.
+        provision_license(&svc, &root.join("LICENSES"), "MIT").unwrap();
+
+        // Then the grid is untouched (not overwritten) and no .txt appeared.
+        let after = std::fs::read_to_string(root.join("LICENSES/MIT.toml")).unwrap();
+        assert_eq!(original, after, "existing grid must not be overwritten");
+        assert!(!root.join("LICENSES/MIT.txt").exists());
+    }
+
+    #[test]
+    fn provision_installs_text_and_grid_for_well_known_id() {
+        // Given a project whose LICENSES/ is empty.
+        let (_tree, root) = empty_project_with_licenses();
+        let svc = Services::real(&root).unwrap();
+
+        // When provisioning MIT (well-known, absent).
+        provision_license(&svc, &root.join("LICENSES"), "MIT").unwrap();
+
+        // Then both MIT.txt and MIT.toml are written to the discovered LICENSES/.
+        assert!(
+            license_text_path(&root, "MIT").exists(),
+            "MIT.txt must be written"
+        );
+        assert!(
+            license_grid_path(&root, "MIT").exists(),
+            "MIT.toml must be written"
+        );
+        let grid = std::fs::read_to_string(license_grid_path(&root, "MIT")).unwrap();
+        assert!(
+            grid.contains("id = \"MIT\""),
+            "grid must carry the canonical id"
+        );
+    }
+
+    #[test]
+    fn provision_hard_errors_when_id_is_unknown_and_absent() {
+        // Given a project whose LICENSES/ has no StudioEULA grid.
+        let (_tree, root) = empty_project_with_licenses();
+        let svc = Services::real(&root).unwrap();
+
+        // When provisioning an unknown id.
+        let result = provision_license(&svc, &root.join("LICENSES"), "StudioEULA");
+
+        // Then it hard-errors with a pointer at `add-license --custom`.
+        let report = result.expect_err("unknown id must error");
+        let rendered = format!("{report:?}");
+        assert!(
+            rendered.contains("--custom"),
+            "error must mention add-license --custom: {rendered}"
+        );
+        assert!(
+            rendered.contains("StudioEULA"),
+            "error must name the offending id: {rendered}"
+        );
+    }
 }

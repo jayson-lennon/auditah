@@ -1,10 +1,10 @@
-//! Integration tests: the observable consequence of `init-pack` provisioning.
+//! Integration tests: the observable consequence of provisioning a license
+//! into `LICENSES/`.
 //!
-//! `init-pack`'s `run()` is cwd-coupled (it walks up from `current_dir()` to find
-//! `LICENSES/`), so the cwd-free matrix logic (`provision_license`) is pinned in
-//! `src/cli/init_pack_cmd.rs` lib tests. These integration tests verify the
-//! end-to-end *consequence*: once MIT is provisioned into `LICENSES/`, a
-//! subsequent audit of an MIT-licensed asset passes with no `MissingLicenseText`.
+//! Once a well-known license is provisioned into `LICENSES/` (text + grid),
+//! a subsequent audit of an asset referencing it passes with no
+//! `MissingLicenseText`. The provisioning matrix itself is pinned in
+//! `src/add_license.rs` lib tests; these verify the end-to-end *consequence*.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auditah::audit::report::FindingCode;

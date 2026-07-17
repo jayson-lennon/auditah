@@ -5,8 +5,8 @@
 
 use auditah::cli::command_to_exit_code;
 use auditah::cli::{
-    ack_cmd::AckCmd, audit_cmd::AuditCmd, generate_cmd::GenerateCmd, init_cmd::InitCmd,
-    init_pack_cmd::InitPackCmd, license_cmd::LicenseCmd, sidecar_cmd::SidecarCmd, CommandStatus,
+    ack_cmd::AckCmd, add_license_cmd::AddLicenseCmd, audit_cmd::AuditCmd,
+    generate_cmd::GenerateCmd, init_cmd::InitCmd, license_cmd::LicenseCmd, CommandStatus,
 };
 use clap::{Parser, Subcommand};
 use error_stack::Report;
@@ -26,9 +26,9 @@ struct Cli {
 enum Command {
     /// Audit license compliance of assets.
     Audit(AuditCmd),
-    /// Scaffold an attribution sidecar for a single asset.
-    Sidecar(SidecarCmd),
     /// Scaffold a new license definition (LICENSES/<id>.toml).
+    AddLicense(AddLicenseCmd),
+    /// Scaffold an attribution sidecar (file) or directory manifest (dir).
     License(LicenseCmd),
     /// Generate all distribution artifacts (CREDITS.md, NOTICES.md, BOM.md).
     Generate(GenerateCmd),
@@ -36,11 +36,8 @@ enum Command {
     Init(InitCmd),
     /// Acknowledge a manual-review license id (adds to `manual_review_acknowledged`).
     Ack(AckCmd),
-    /// Write a directory `_manifest.toml` covering a folder.
-    InitPack(InitPackCmd),
 }
 
-/// Dispatch a parsed command to its handler and return its `CommandStatus`.
 /// Dispatch a parsed command to its handler and return its `CommandStatus`.
 ///
 /// `cwd` is the process working directory captured once at program start; it is
@@ -49,12 +46,11 @@ enum Command {
 fn dispatch(command: Command, cwd: &Path) -> Result<CommandStatus, Report<AppError>> {
     match command {
         Command::Audit(cmd) => auditah::cli::audit_cmd::run(&cmd, cwd),
-        Command::Sidecar(cmd) => auditah::cli::sidecar_cmd::run(&cmd),
+        Command::AddLicense(cmd) => auditah::cli::add_license_cmd::run(&cmd, cwd),
         Command::License(cmd) => auditah::cli::license_cmd::run(&cmd, cwd),
+        Command::Generate(cmd) => auditah::cli::generate_cmd::run(&cmd, cwd),
         Command::Init(cmd) => auditah::cli::init_cmd::run(&cmd),
         Command::Ack(cmd) => auditah::cli::ack_cmd::run(&cmd),
-        Command::InitPack(cmd) => auditah::cli::init_pack_cmd::run(&cmd, cwd),
-        Command::Generate(cmd) => auditah::cli::generate_cmd::run(&cmd, cwd),
     }
 }
 
