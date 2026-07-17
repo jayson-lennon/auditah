@@ -1,6 +1,6 @@
 //! `auditah add-license` — scaffold a license grid (+ text for well-known ids).
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::add_license::{grid_id_from_path, write_grid, write_license_template, write_text};
 use crate::services::Services;
@@ -50,12 +50,8 @@ pub struct AddLicenseCmd {
 /// Returns an error if `--root` cannot be resolved to a project root, services
 /// fail, the name doesn't resolve (unknown SPDX id), a `--custom` name collides
 /// with a well-known id, or a target file already exists.
-pub fn run(cmd: &AddLicenseCmd, cwd: &Path) -> Result<CommandStatus, Report<AppError>> {
-    // Resolve the project root by walking up from --root for a LICENSES/ dir.
-    // add-license no longer creates LICENSES — init is the sole creator.
-    let root = crate::project::resolve_or_error(cwd, &cmd.root)?;
-    let root = root.as_path();
-    let services = Services::real(root).change_context(AppError)?;
+pub fn run(services: &Services, cmd: &AddLicenseCmd) -> Result<CommandStatus, Report<AppError>> {
+    let root = services.config.root();
 
     if cmd.custom {
         // Refuse if the custom name collides with a well-known id (case-insensitive).
@@ -65,7 +61,7 @@ pub fn run(cmd: &AddLicenseCmd, cwd: &Path) -> Result<CommandStatus, Report<AppE
                 cmd.name, cmd.name
             )));
         }
-        let path = write_license_template(&services, root, &cmd.name).change_context(AppError)?;
+        let path = write_license_template(services, root, &cmd.name).change_context(AppError)?;
         let id = grid_id_from_path(&path, &cmd.name);
         eprintln!(
             "warning: wrote default_fail() grid for {name:?} (manual_review = true). \
@@ -88,7 +84,7 @@ pub fn run(cmd: &AddLicenseCmd, cwd: &Path) -> Result<CommandStatus, Report<AppE
             // Always extract the canonical text.
             let text = well_known::extract_text(&canonical);
             let text_path =
-                write_text(&services, root, &canonical, &text).change_context(AppError)?;
+                write_text(services, root, &canonical, &text).change_context(AppError)?;
 
             // Authored grid if present, else default_fail() placeholder + warning.
             let (grid_content, placeholder) = match well_known::extract_grid(&canonical) {
@@ -99,7 +95,7 @@ pub fn run(cmd: &AddLicenseCmd, cwd: &Path) -> Result<CommandStatus, Report<AppE
                 ),
             };
             let grid_path =
-                write_grid(&services, root, &canonical, &grid_content).change_context(AppError)?;
+                write_grid(services, root, &canonical, &grid_content).change_context(AppError)?;
 
             if placeholder {
                 eprintln!(

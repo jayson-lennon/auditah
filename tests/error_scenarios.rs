@@ -8,10 +8,10 @@
 //!   technical failure→`Err`; plus exit-code mapping.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use auditah::cli::add_license_cmd::{run as add_license_run, AddLicenseCmd};
+use auditah::cli::add_license_cmd::AddLicenseCmd;
 use auditah::cli::audit_cmd::{run as audit_run, AuditCmd};
 use auditah::cli::command_to_exit_code;
-use auditah::cli::generate_cmd::{run as generate_run, GenerateCmd};
+use auditah::cli::generate_cmd::GenerateCmd;
 use auditah::cli::CommandStatus;
 use auditah::discovery::enumerator::ExcludeMatcher;
 use auditah::discovery::resolver::resolve;
@@ -119,8 +119,10 @@ fn resolve_errors_on_malformed_sidecar_toml() {
         (Path::new("/x.glb.attr.toml"), "not valid toml = ="),
     ])));
 
+    let services = Services::test().fs(fs).build();
+
     // When resolving.
-    let result = resolve(&fs, Path::new("/x.glb"), Path::new("/"));
+    let result = resolve(&services, Path::new("/x.glb"), Path::new("/"));
 
     // Then it errors (malformed TOML rejected).
     assert!(result.is_err(), "malformed sidecar TOML must error");
@@ -141,8 +143,10 @@ source = "https://example.com"
         ),
     ])));
 
+    let services = Services::test().fs(fs).build();
+
     // When resolving.
-    let result = resolve(&fs, Path::new("/x.glb"), Path::new("/"));
+    let result = resolve(&services, Path::new("/x.glb"), Path::new("/"));
 
     // Then it errors (missing required field rejected).
     assert!(
@@ -170,8 +174,10 @@ derivatives = "foobar"
         ),
     ])));
 
+    let services = Services::test().fs(fs).build();
+
     // When resolving.
-    let result = resolve(&fs, Path::new("/x.glb"), Path::new("/"));
+    let result = resolve(&services, Path::new("/x.glb"), Path::new("/"));
 
     // Then it errors (invalid enum value rejected).
     assert!(
@@ -200,8 +206,10 @@ allows_modifications = true
         ),
     ])));
 
+    let services = Services::test().fs(fs).build();
+
     // When resolving.
-    let result = resolve(&fs, Path::new("/x.glb"), Path::new("/"));
+    let result = resolve(&services, Path::new("/x.glb"), Path::new("/"));
 
     // Then it errors (unknown override field rejected by deny_unknown_fields).
     assert!(
@@ -220,8 +228,8 @@ fn write_sidecar_errors_on_injected_write_failure() {
     let fs = FsService::new(Arc::new(
         FakeFs::default().fail_write(Path::new("/x.glb.attr.toml")),
     ));
-    let registry = LicenseRegistry::empty();
-    let services = Services::from_parts(fs, registry, real_clock());
+    let _registry = LicenseRegistry::empty();
+    let services = Services::test().fs(fs).clock(real_clock()).build();
     let rec = common::record("LicenseRef-Asset");
 
     // When writing the sidecar.
@@ -238,26 +246,27 @@ fn write_sidecar_errors_on_injected_write_failure() {
 fn generate_credits_errors_on_injected_write_failure() {
     // Given a credits ctx whose FakeFs is set to fail writes to the output path.
     use auditah::config::Config;
-    use auditah::credits::{generate_credits, CreditsCtx};
+    use auditah::credits::generate_credits;
+    use auditah::services::config::ConfigService;
     let fs = FsService::new(Arc::new(
         FakeFs::default().fail_write(Path::new("/out/CREDITS.md")),
     ));
-    let registry = LicenseRegistry::empty();
-    let services = Services::from_parts(fs, registry, real_clock());
-    let cfg = Config {
-        commercial_project: false,
-        redistributes_assets: false,
-        manual_review_acknowledged: Vec::new(),
-        exclude: Vec::new(),
-    };
-    let ctx = CreditsCtx {
-        services: &services,
-        config: &cfg,
-        root: Path::new("/"),
+    let services = {
+        let cfg = Config {
+            commercial_project: false,
+            redistributes_assets: false,
+            manual_review_acknowledged: Vec::new(),
+            exclude: Vec::new(),
+        };
+        Services::test()
+            .fs(fs)
+            .clock(real_clock())
+            .config(ConfigService::new(Arc::from(Path::new("/")), Arc::new(cfg)))
+            .build()
     };
 
     // When generating credits to the failing output path.
-    let result = generate_credits(&ctx, Path::new("/out/CREDITS.md"));
+    let result = generate_credits(&services, Path::new("/out/CREDITS.md"));
 
     // Then it errors (write failure propagated).
     assert!(
@@ -278,8 +287,7 @@ fn write_sidecar_errors_when_target_is_under_a_file() {
     };
     let root = tree.path();
     let fs = common::real_fs();
-    let registry = LicenseRegistry::empty();
-    let services = Services::from_parts(fs, registry, real_clock());
+    let services = Services::test().fs(fs).clock(real_clock()).build();
     let rec = common::record("LicenseRef-Asset");
     // Writing to blocker/x.glb.attr.toml fails because `blocker` is a file.
     let target = root.join("blocker").join("x.glb");
@@ -298,27 +306,31 @@ fn write_sidecar_errors_when_target_is_under_a_file() {
 #[test]
 fn run_audit_propagates_directory_listing_failure() {
     // Given an audit over a FakeFs configured to fail the root directory listing.
-    use auditah::audit::{run_audit, AuditCtx};
+    use auditah::audit::run_audit;
     use auditah::config::Config;
+    use auditah::services::config::ConfigService;
     let fs = FsService::new(Arc::new(
         FakeFs::default().fail_list_dir(Path::new("/proj")),
     ));
-    let registry = LicenseRegistry::empty();
-    let services = Services::from_parts(fs, registry, real_clock());
-    let cfg = Config {
-        commercial_project: false,
-        redistributes_assets: false,
-        manual_review_acknowledged: Vec::new(),
-        exclude: Vec::new(),
-    };
-    let ctx = AuditCtx {
-        services: &services,
-        config: &cfg,
-        root: Path::new("/proj"),
+    let services = {
+        let cfg = Config {
+            commercial_project: false,
+            redistributes_assets: false,
+            manual_review_acknowledged: Vec::new(),
+            exclude: Vec::new(),
+        };
+        Services::test()
+            .fs(fs)
+            .clock(real_clock())
+            .config(ConfigService::new(
+                Arc::from(Path::new("/proj")),
+                Arc::new(cfg),
+            ))
+            .build()
     };
 
     // When running the audit.
-    let result = run_audit(&ctx);
+    let result = run_audit(&services);
 
     // Then the listing failure propagates as an error.
     assert!(
@@ -331,25 +343,29 @@ fn run_audit_propagates_directory_listing_failure() {
 fn run_audit_propagates_build_excludes_error_without_panic() {
     // Given a directly-constructed Config (bypassing load) with an invalid
     // exclude glob — proves build_excludes is fallible, not a panic.
-    use auditah::audit::{run_audit, AuditCtx};
+    use auditah::audit::run_audit;
     use auditah::config::Config;
+    use auditah::services::config::ConfigService;
     let fs = FsService::new(Arc::new(FakeFs::default()));
-    let registry = LicenseRegistry::empty();
-    let services = Services::from_parts(fs, registry, real_clock());
-    let cfg = Config {
-        commercial_project: false,
-        redistributes_assets: false,
-        manual_review_acknowledged: Vec::new(),
-        exclude: vec!["**/[invalid".to_string()],
-    };
-    let ctx = AuditCtx {
-        services: &services,
-        config: &cfg,
-        root: Path::new("/proj"),
+    let services = {
+        let cfg = Config {
+            commercial_project: false,
+            redistributes_assets: false,
+            manual_review_acknowledged: Vec::new(),
+            exclude: vec!["**/[invalid".to_string()],
+        };
+        Services::test()
+            .fs(fs)
+            .clock(real_clock())
+            .config(ConfigService::new(
+                Arc::from(Path::new("/proj")),
+                Arc::new(cfg),
+            ))
+            .build()
     };
 
     // When running the audit.
-    let result = run_audit(&ctx);
+    let result = run_audit(&services);
 
     // Then the invalid-glob error propagates as Err (never panics).
     assert!(
@@ -383,7 +399,7 @@ source = "https://example.com"
     };
 
     // When running the audit command.
-    let result = audit_run(&cmd, root);
+    let result = audit_run(&common::resolve_services(root, &cmd.root), &cmd);
 
     // Then it returns Ok(Success) (clean project).
     let status = result.expect("clean audit should be Ok");
@@ -407,7 +423,7 @@ fn audit_cmd_violations_returns_ok_compliance_failure() {
     };
 
     // When running the audit command.
-    let result = audit_run(&cmd, root);
+    let result = audit_run(&common::resolve_services(root, &cmd.root), &cmd);
 
     // Then it returns Ok(ComplianceFailure) (violations found, exit 1).
     let status = result.expect("audit with violations should be Ok");
@@ -434,11 +450,12 @@ fn license_cmd_run_returns_err_on_write_failure() {
         year: Some(2020),
         source: Some("https://example.com".to_string()),
         modified: false,
-        root: None,
+        root: Some(root.to_path_buf()),
     };
 
-    // When running the license command.
-    let result = license_run(&cmd, root);
+    // When running the license command (root resolved explicitly so the
+    // failure under test is the write step, not root discovery).
+    let result = license_run(&common::real_services(root), &cmd);
 
     // Then it returns Err (the target's parent is a file, so metadata/write fails).
     assert!(result.is_err(), "license write failure must return Err");
@@ -452,12 +469,15 @@ fn audit_cmd_missing_root_returns_err_exit_two() {
         ..Default::default()
     };
 
-    // When running the audit command.
-    let result = audit_run(&cmd, std::path::Path::new("."));
+    // When dispatching against a missing root: resolve_or_error fails before any
+    // Services is built (no LICENSES/ ancestor to anchor on).
+    let result = auditah::project::resolve_or_error(std::path::Path::new("."), &cmd.root);
 
-    // Then it returns Err (technical failure, exit 2).
     assert!(result.is_err(), "missing root must be a technical failure");
-    assert_eq!(command_to_exit_code(&result), 2);
+    assert_eq!(
+        command_to_exit_code(&result.map(|_| CommandStatus::Success)),
+        2
+    );
 }
 
 #[rstest::rstest]
@@ -489,9 +509,9 @@ fn audit_cmd_no_licenses_dir_returns_err() {
         ..Default::default()
     };
 
-    // When running the audit command.
-    let result = audit_run(&cmd, root);
-
+    // When dispatching audit with no LICENSES/ ancestor: resolve_or_error hard-errors
+    // (no Services is built).
+    let result = auditah::project::resolve_or_error(root, &cmd.root);
     // Then it returns Err (discovery failure points the user at `auditah init`).
     assert!(
         result.is_err(),
@@ -520,9 +540,8 @@ fn generate_cmd_no_licenses_dir_returns_err() {
         output_bom: None,
     };
 
-    // When running the generate command.
-    let result = generate_run(&cmd, root);
-
+    // When dispatching generate with no LICENSES/ ancestor: resolve_or_error hard-errors.
+    let result = auditah::project::resolve_or_error(root, &cmd.root);
     // Then it returns Err pointing the user at `auditah init`.
     assert!(
         result.is_err(),
@@ -549,9 +568,8 @@ fn license_cmd_no_licenses_dir_returns_err_and_does_not_create_licenses() {
         root: root.to_path_buf(),
     };
 
-    // When running add-license.
-    let result = add_license_run(&cmd, root);
-
+    // When dispatching add-license with no LICENSES/ ancestor: resolve_or_error hard-errors.
+    let result = auditah::project::resolve_or_error(root, &cmd.root);
     // Then it returns Err pointing the user at `auditah init`.
     assert!(
         result.is_err(),

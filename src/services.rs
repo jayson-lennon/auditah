@@ -1,66 +1,42 @@
 //! Service layer: dependency-injection container + backend abstractions.
 
 pub mod clock;
+pub mod config;
 pub mod fs;
 
-use std::{path::Path, sync::Arc};
-
+pub use self::config::ConfigService;
+pub use crate::config::ConfigError;
+pub use crate::registry::{LicenseRegistry, LicenseRegistryService};
 pub use clock::{ClockBackend, ClockError, ClockService, RealClock};
-use error_stack::{Report, ResultExt};
 pub use fs::{DirEntry, FsBackend, FsError, FsService, RealFs};
 
-use derive_more::Debug;
-use wherror::Error;
-
-use crate::registry::LicenseRegistry;
-
-/// Error with the Services.
-#[derive(Debug, Error)]
-#[error(debug)]
-pub struct ServicesError;
-
 /// Dependency-injection container. Constructed once in `main` (real backends)
-/// or in tests (fakes). Cheap to clone; every field is a service wrapper.
-///
-/// Fields are added as subsystems come online. `registry` joins in Phase 2.
+/// or in tests (fakes). Cheap to clone; every field is a service wrapper or
+/// otherwise cheap-to-clone. Pass it by reference to anything that needs a
+/// service — do not split individual fields out into function signatures.
 #[derive(Debug, Clone)]
 pub struct Services {
     pub fs: FsService,
-    pub registry: LicenseRegistry,
+    pub registry: LicenseRegistryService,
     pub clock: ClockService,
+    pub config: ConfigService,
 }
 
 impl Services {
-    /// Build the production service container backed by the real filesystem.
+    /// Start a test-only [`ServicesTestBuilder`]. Defaults: empty `FakeFs`,
+    /// `FakeClock::fixed(0)`, empty registry, default config at `/proj`.
     ///
-    /// Phase 2 will extend this to also load the license registry.
-    ///
-    /// # Errors
-    ///
-    /// Returns an `Err` if the license registry fails to load (toml parse or read failure).
-    pub fn real(root: &Path) -> Result<Self, Report<ServicesError>> {
-        Ok(Self {
-            fs: FsService::new(Arc::new(RealFs::new())),
-            registry: LicenseRegistry::load(&FsService::new(Arc::new(RealFs::new())), root)
-                .change_context(ServicesError)?,
-            clock: ClockService::new(Arc::new(RealClock::new())),
-        })
-    }
-
-    /// Build a service container from explicit parts. Used by tests and by
-    /// callers that construct pieces independently (e.g. command runners).
+    /// Tests override only what they care about (e.g. `.registry_specs(...)`)
+    /// and call `.build()`. Production assembly lives only in `main`.
+    #[cfg(feature = "test-helper")]
     #[must_use]
-    pub fn from_parts(fs: FsService, registry: LicenseRegistry, clock: ClockService) -> Self {
-        Self {
-            fs,
-            registry,
-            clock,
-        }
+    pub fn test() -> crate::test_support::ServicesTestBuilder {
+        crate::test_support::ServicesTestBuilder::default()
     }
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::test_support::FakeFs;
@@ -68,26 +44,56 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
-    fn services_real_constructs_with_real_fs_backend() {
-        // Given the real Services constructor against the project root.
-        // When constructing real services.
-        let services = Services::real(Path::new(".")).expect("real services");
+    fn test_builder_defaults_to_fake_backends_and_empty_registry() {
+        // Given a freshly-defaulted ServicesTestBuilder.
+        // When building.
+        let services = Services::test().build();
 
-        // Then the fs backend observes a known file in the project root.
-        assert!(
-            services.fs.exists(Path::new("Cargo.toml")),
-            "real fs backend should observe Cargo.toml in project root"
-        );
+        // Then the registry is empty and the config root is the default.
+        assert!(services.registry.is_empty());
+        assert_eq!(services.config.root(), Path::new("/proj"));
+    }
+
+    #[test]
+    fn services_container_exposes_all_four_fields_and_is_clone() {
+        // Given a Services built via the test builder.
+        let services = Services::test().build();
+
+        // When cloning.
+        let cloned = services.clone();
+
+        // Then all four service fields are present and the clone shares the
+        // same root (Arc-backed ConfigService) — confirms the container is
+        // cheap to clone and exposes every subsystem.
+        assert_eq!(services.config.root(), cloned.config.root());
+        assert!(services.registry.is_empty());
+        assert_eq!(services.clock.now_epoch_secs().unwrap(), 0);
+    }
+
+    #[test]
+    fn services_test_builder_seeds_config() {
+        // Given a non-default config.
+        let cfg = crate::config::Config {
+            commercial_project: true,
+            ..Default::default()
+        };
+
+        // When building with that config rooted at /custom.
+        let services = Services::test()
+            .config_root(Path::new("/custom"), cfg)
+            .build();
+
+        // Then the config and root are the seeded values.
+        assert_eq!(services.config.root(), Path::new("/custom"));
+        assert!(services.config.config().commercial_project);
     }
 
     #[test]
     fn fs_service_round_trips_write_read_exists_via_fake_backend() {
         // Given a Services with a FakeFs backend.
-        let services = Services {
-            fs: FsService::new(Arc::new(FakeFs::default())),
-            registry: LicenseRegistry::empty(),
-            clock: ClockService::new(Arc::new(RealClock::new())),
-        };
+        let services = Services::test()
+            .fs(FsService::new(Arc::new(FakeFs::default())))
+            .build();
         let path = Path::new("/tmp/fake.txt");
 
         // When writing then reading via the FsService.

@@ -14,43 +14,68 @@ use auditah::audit::report::{AuditReport, FindingCode};
 use auditah::config::Config;
 use auditah::model::attribution::AttributionRecord;
 use auditah::model::terms::{Derivatives, LicenseTerms, Overrides};
-use auditah::registry::{LicenseRegistry, LicenseSpec};
+use auditah::registry::{LicenseRegistry, LicenseRegistryService, LicenseSpec};
 use auditah::services::clock::RealClock;
+use auditah::services::config::ConfigService;
 use auditah::services::fs::{FsService, RealFs};
 use auditah::services::{ClockService, Services};
+use auditah::test_support::ServicesTestBuilder;
 
 /// Build a real-filesystem [`Services`] with the given registry.
 ///
 /// Each test declares the licenses it expects to fulfill it via the
 /// [`LicenseRegistryBuilder`] (see [`services_with`] / [`services_empty`]).
-fn services_from(registry: LicenseRegistry) -> Services {
-    Services {
-        fs: FsService::new(Arc::new(RealFs::new())),
-        registry,
-        clock: ClockService::new(Arc::new(RealClock::new())),
-    }
+fn services_from(registry: LicenseRegistry, root: &Path, config: Config) -> Services {
+    Services::test()
+        .fs(FsService::new(Arc::new(RealFs::new())))
+        .registry(LicenseRegistryService::new(Arc::new(registry)))
+        .clock(ClockService::new(Arc::new(RealClock::new())))
+        .config(ConfigService::new(Arc::from(root), Arc::new(config)))
+        .build()
 }
 
 /// Build [`Services`] with a registry constructed from the given specs.
 ///
 /// Tests that need a resolvable license add it here:
-/// `services_with(&root, [LicenseSpec::new("LicenseRef-Asset").text("...")])`.
-/// Use [`services_with_text`] when the audit text-check must pass.
+/// `services_with(&root, cfg(), [LicenseSpec::new("LicenseRef-Asset").text("...")])`.
 #[must_use]
-pub fn services_with(specs: impl IntoIterator<Item = LicenseSpec>) -> Services {
+pub fn services_with(
+    root: &Path,
+    config: Config,
+    specs: impl IntoIterator<Item = LicenseSpec>,
+) -> Services {
     let mut builder = LicenseRegistry::builder();
     for spec in specs {
         builder = builder.license(spec);
     }
-    services_from(builder.build())
+    services_from(builder.build(), root, config)
 }
 
 /// Build [`Services`] with an empty registry (no licenses resolvable).
 ///
 /// Audit tests that exercise `UnknownLicense` start here.
 #[must_use]
-pub fn services_empty() -> Services {
-    services_from(LicenseRegistry::builder().build())
+pub fn services_empty(root: &Path, config: Config) -> Services {
+    services_from(LicenseRegistry::builder().build(), root, config)
+}
+
+/// Build a fully-real [`Services`] for a project root: loads `auditah.toml`
+/// and `LICENSES/` from disk the same way `main` does. Used by CLI tests that
+/// exercise `*_cmd::run(&services, &cmd)`.
+#[must_use]
+pub fn real_services(root: &Path) -> Services {
+    ServicesTestBuilder::load_from_disk(root)
+        .expect("load real services from disk")
+        .build()
+}
+
+/// Resolve an ancestor `LICENSES/` from `start` (anchored at `cwd`) and build
+/// a fully-real [`Services`] from the resolved root — the same wiring `main`'s
+/// `dispatch` does for LICENSES-discovering commands (audit/generate/add-license).
+#[must_use]
+pub fn resolve_services(cwd: &Path, start: &Path) -> Services {
+    let root = auditah::project::resolve_or_error(cwd, start).expect("resolve root");
+    real_services(&root)
 }
 
 /// Write `LICENSES/<id>.txt` for each given id under `root`.

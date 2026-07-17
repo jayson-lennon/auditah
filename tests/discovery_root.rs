@@ -8,7 +8,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use auditah::cli::add_license_cmd::{run as add_license_run, AddLicenseCmd};
 use auditah::cli::audit_cmd::{run as audit_run, AuditCmd};
@@ -18,6 +18,12 @@ use auditah::cli::CommandStatus;
 use temptree::temptree;
 
 mod common;
+
+// Build a Services by resolving an ancestor LICENSES/ from `start` anchored at
+// `cwd` — exactly the wiring `main`'s `dispatch` performs before calling run().
+fn resolve_services(cwd: &Path, start: &Path) -> auditah::services::Services {
+    common::resolve_services(cwd, start)
+}
 
 // audit resolves a LICENSES/ located above --root and audits against it.
 #[test]
@@ -50,14 +56,13 @@ source = "https://example.com"
     // init creates LICENSES/; seed the license the sidecars reference.
     common::seed_license(root, "LicenseRef-Asset");
 
-    // When auditing with --root pointing at the subdir (LICENSES is above it).
-    let cmd = AuditCmd {
-        root: root.join("sub").clone(),
-        ..Default::default()
-    };
+    // When auditing with --root pointing at the subdir (LICENSES is above it):
+    // dispatch resolves the ancestor root and builds Services from it.
+    let cmd = AuditCmd::default();
+    let services = resolve_services(root, &root.join("sub"));
 
     // Then it resolves the ancestor project root and audits cleanly (Success).
-    let status = audit_run(&cmd, root).expect("audit should resolve ancestor LICENSES");
+    let status = audit_run(&services, &cmd).expect("audit should resolve ancestor LICENSES");
     assert_eq!(
         status,
         CommandStatus::Success,
@@ -96,22 +101,24 @@ source = "https://example.com"
     let root = tree.path();
     common::seed_license(root, "LicenseRef-Asset");
 
-    // When auditing with --root as a relative ".", anchored at the injected
-    // cwd (the subdir) — no process-cwd mutation.
+    // When auditing with a relative ".", anchored at the injected cwd (the subdir)
+    // — no process-cwd mutation.
     let cmd = AuditCmd {
         root: PathBuf::from("."),
         ..Default::default()
     };
-    let status = audit_run(&cmd, &root.join("sub"))
-        .expect("audit should resolve ancestor LICENSES via relative root");
+    let services = resolve_services(&root.join("sub"), &cmd.root);
 
     // Then it still succeeds — the relative path walks the real ancestor chain.
+    let status = audit_run(&services, &cmd)
+        .expect("audit should resolve ancestor LICENSES via relative root");
     assert_eq!(
         status,
         CommandStatus::Success,
         "relative --root must canonicalize before walking ancestors"
     );
 }
+
 // generate resolves a LICENSES/ located above --root and writes its artifacts
 // against the ancestor project root.
 #[test]
@@ -147,14 +154,15 @@ source = "https://example.com"
     let out_notices = root.join("n.md");
     let out_bom = root.join("b.md");
     let cmd = GenerateCmd {
-        root: root.join("sub").clone(),
+        root: root.join("sub"),
         output_credits: Some(out_credits.clone()),
         output_notices: Some(out_notices.clone()),
         output_bom: Some(out_bom.clone()),
     };
+    let services = resolve_services(root, &cmd.root);
 
     // Then it resolves the ancestor root and writes all three artifacts.
-    let status = generate_run(&cmd, root).expect("generate should resolve ancestor LICENSES");
+    let status = generate_run(&services, &cmd).expect("generate should resolve ancestor LICENSES");
     assert_eq!(
         status,
         CommandStatus::Success,
@@ -180,9 +188,11 @@ fn add_license_resolves_ancestor_licenses_from_subdir() {
     let cmd = AddLicenseCmd {
         name: "MIT".to_string(),
         custom: false,
-        root: root.join("sub").clone(),
+        root: root.join("sub"),
     };
-    let status = add_license_run(&cmd, root).expect("add-license should resolve ancestor LICENSES");
+    let services = resolve_services(root, &cmd.root);
+    let status =
+        add_license_run(&services, &cmd).expect("add-license should resolve ancestor LICENSES");
 
     // Then it resolves the ancestor root and writes MIT into the ancestor LICENSES/.
     assert_eq!(
@@ -208,26 +218,14 @@ fn license_dir_target_no_licenses_dir_returns_err() {
         "pack": {},
     };
     let root = tree.path();
-    let cmd = LicenseCmd {
-        target: root.join("pack"),
-        id: "MIT".to_string(),
-        author: "Artist".to_string(),
-        title: None,
-        year: None,
-        source: None,
-        modified: false,
-        root: None,
-    };
 
-    // When running `license` against the pack dir with cwd = the pack dir.
-    let result = license_run(&cmd, &root.join("pack"));
+    // When dispatching `license` against the pack dir: resolve_or_error finds no
+    // LICENSES/ ancestor and hard-errors (no Services is built).
+    let result = auditah::project::resolve_or_error(root, &root.join("pack"));
 
     // Then it returns Err pointing the user at `auditah init`.
-    assert!(
-        result.is_err(),
-        "license <dir> must hard-error when no ancestor LICENSES/ exists"
-    );
-    let rendered = format!("{:?}", result.expect_err("err"));
+    let err = result.expect_err("must hard-error when no ancestor LICENSES/");
+    let rendered = format!("{err:?}");
     assert!(
         rendered.contains("auditah init"),
         "error must mention `auditah init`, got: {rendered}"
@@ -246,8 +244,9 @@ fn license_dir_resolves_ancestor_licenses_and_writes_manifest_in_target() {
         "sub": {},
     };
     let root = tree.path();
+    let target = root.join("sub");
     let cmd = LicenseCmd {
-        target: root.join("sub"),
+        target: target.clone(),
         id: "MIT".to_string(),
         author: "Artist".to_string(),
         title: None,
@@ -259,7 +258,8 @@ fn license_dir_resolves_ancestor_licenses_and_writes_manifest_in_target() {
 
     // When running `license sub` (discovery walks up from the target subdir
     // to find LICENSES/, no process-cwd mutation).
-    let status = license_run(&cmd, root)
+    let services = resolve_services(root, &target);
+    let status = license_run(&services, &cmd)
         .expect("license <dir> should resolve ancestor LICENSES and succeed");
 
     // Then it returns Success.
@@ -270,7 +270,7 @@ fn license_dir_resolves_ancestor_licenses_and_writes_manifest_in_target() {
     );
     // And the manifest is written into the target directory (the subdir).
     assert!(
-        root.join("sub/_manifest.toml").exists(),
+        target.join("_manifest.toml").exists(),
         "manifest must be written into the target dir (subdir)"
     );
     // And the license was provisioned into the ANCESTOR LICENSES/.

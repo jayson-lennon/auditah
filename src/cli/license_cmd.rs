@@ -76,7 +76,7 @@ pub struct LicenseCmd {
 /// directory target, no project root (ancestor `LICENSES/`) is found from the
 /// resolved start, the requested license is unknown/custom and not already
 /// present in `LICENSES/`, or the sidecar/manifest write fails.
-pub fn run(cmd: &LicenseCmd, cwd: &Path) -> Result<CommandStatus, Report<AppError>> {
+pub fn run(services: &Services, cmd: &LicenseCmd) -> Result<CommandStatus, Report<AppError>> {
     let is_dir = std::fs::metadata(&cmd.target)
         .change_context(AppError)
         .attach("license target does not exist")
@@ -89,27 +89,22 @@ pub fn run(cmd: &LicenseCmd, cwd: &Path) -> Result<CommandStatus, Report<AppErro
         ));
     }
 
-    // Discover the project root: walk up from the target (directory branch) or
-    // the target's parent (file branch), or from `--root` if given. `cwd`
-    // anchors any relative start so discovery never reads the process env.
-    let start = resolve_start(cmd, is_dir);
-    let project_root = resolve_project_root(cwd, &start)?;
+    // The project root was resolved by dispatch (anchored at `--root` or the
+    // target/parent) and bundled into `services`. Derive the LICENSES/ path.
+    let project_root = services.config.root();
     let licenses_dir = project_root.join("LICENSES");
-    let services = Services::real(&project_root)
-        .change_context(AppError)
-        .attach("failed to load services")?;
 
-    provision_license(&services, &licenses_dir, &cmd.id)?;
+    provision_license(services, &licenses_dir, &cmd.id)?;
 
-    let record = build_record(cmd, &services, is_dir);
+    let record = build_record(cmd, services, is_dir);
     if is_dir {
-        write_manifest(&services, &cmd.target, &record).change_context(AppError)?;
+        write_manifest(services, &cmd.target, &record).change_context(AppError)?;
         println!(
             "license: wrote {}/{MANIFEST_FILENAME}",
             cmd.target.display()
         );
     } else {
-        write_sidecar(&services, &cmd.target, &record).change_context(AppError)?;
+        write_sidecar(services, &cmd.target, &record).change_context(AppError)?;
         println!("license: wrote {}.attr.toml", cmd.target.display());
     }
     Ok(CommandStatus::Success)
@@ -117,7 +112,8 @@ pub fn run(cmd: &LicenseCmd, cwd: &Path) -> Result<CommandStatus, Report<AppErro
 
 /// Pick the discovery start point: `--root` overrides; otherwise the target
 /// itself (directory branch) or the target's parent (file branch).
-fn resolve_start(cmd: &LicenseCmd, is_dir: bool) -> PathBuf {
+#[must_use]
+pub fn resolve_start(cmd: &LicenseCmd, is_dir: bool) -> PathBuf {
     if let Some(root) = &cmd.root {
         return root.clone();
     }
@@ -131,17 +127,6 @@ fn resolve_start(cmd: &LicenseCmd, is_dir: bool) -> PathBuf {
     }
 }
 
-/// Resolve the project root for `start`, anchoring a relative `start` against
-/// the injected `cwd` before walking up for a `LICENSES/` directory.
-///
-/// # Errors
-///
-/// Returns `AppError` when no `LICENSES/` is found walking up from `start`, or
-/// `start` cannot be canonicalized.
-fn resolve_project_root(cwd: &Path, start: &Path) -> Result<PathBuf, Report<AppError>> {
-    crate::project::resolve_or_error(cwd, start)
-}
-
 /// Build the attribution record. `is_dir` selects the title default: directory
 /// name for a directory target, file stem for a file target.
 fn build_record(cmd: &LicenseCmd, services: &Services, is_dir: bool) -> AttributionRecord {
@@ -152,7 +137,7 @@ fn build_record(cmd: &LicenseCmd, services: &Services, is_dir: bool) -> Attribut
     AttributionRecord {
         title,
         author: cmd.author.clone(),
-        year: cmd.year.unwrap_or_else(|| year_from_clock(&services.clock)),
+        year: cmd.year.unwrap_or_else(|| year_from_clock(services)),
         license: cmd.id.clone(),
         source: cmd.source.clone().unwrap_or_default(),
         modified: cmd.modified,
@@ -178,6 +163,11 @@ fn default_title(target: &Path, is_dir: bool) -> String {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
+
+    use crate::services::ClockService;
+
+    use std::sync::Arc;
+
     use super::*;
 
     // --- default_title ---
@@ -264,7 +254,7 @@ mod tests {
     fn build_record_defaults_title_to_file_stem_for_file_target() {
         // Given a file target with no explicit title.
         let cmd = cmd("/proj/sword.glb", "MIT", "Artist");
-        let services = Services::real(Path::new(".")).unwrap();
+        let services = Services::test().build();
 
         // When building the record for a file target.
         let record = build_record(&cmd, &services, false);
@@ -277,7 +267,7 @@ mod tests {
     fn build_record_defaults_source_to_empty_when_omitted() {
         // Given a command with no --source.
         let cmd = cmd("/proj/sword.glb", "MIT", "Artist");
-        let services = Services::real(Path::new(".")).unwrap();
+        let services = Services::test().build();
 
         // When building the record.
         let record = build_record(&cmd, &services, false);
@@ -290,7 +280,11 @@ mod tests {
     fn build_record_defaults_year_to_clock_year_when_omitted() {
         // Given a command with no --year.
         let cmd = cmd("/proj/sword.glb", "MIT", "Artist");
-        let services = Services::real(Path::new(".")).unwrap();
+        let services = Services::test()
+            .clock(ClockService::new(Arc::new(
+                crate::services::clock::RealClock::new(),
+            )))
+            .build();
 
         // When building the record.
         let record = build_record(&cmd, &services, false);

@@ -22,10 +22,9 @@ use wherror::Error;
 
 use crate::audit::cascade::{descend, AuditInput, DirResult, Inherited};
 use crate::audit::report::Verdict;
-use crate::audit::{audit_asset, orphan_verdict, AuditCtx};
-use crate::config::Config;
+use crate::audit::{audit_asset, orphan_verdict};
 use crate::discovery::enumerator::ExcludeMatcher;
-use crate::services::{FsService, Services};
+use crate::services::Services;
 
 /// Technical failure surfaced from the async driver itself (not a compliance
 /// finding). Distinct from `AuditError` so task panics / join failures aren't
@@ -57,12 +56,11 @@ enum FsMessage {
 /// not as `Err`.
 pub async fn run_pipeline(
     services: Arc<Services>,
-    config: Arc<Config>,
-    root: PathBuf,
     excludes: ExcludeMatcher,
     jobs: usize,
     progress: mpsc::Sender<()>,
 ) -> Result<Vec<Verdict>, Report<PipelineError>> {
+    let root = services.config.root().to_path_buf();
     // Bounded channels: backpressure throughout, bounded memory on huge trees.
     let (tx_in, rx_in) = mpsc::channel::<FsMessage>(jobs.max(1) * 4);
     let (tx_out, rx_out) = mpsc::channel::<Verdict>(jobs.max(1) * 4);
@@ -73,8 +71,7 @@ pub async fn run_pipeline(
     // tasks internally; when it (and all children) finish, the last `tx_in`
     // clone drops, closing the channel.
     let walker = tokio::spawn(walk_dir(
-        services.fs.clone(),
-        root.clone(),
+        (*services).clone(),
         root.clone(),
         excludes,
         None,
@@ -85,16 +82,9 @@ pub async fn run_pipeline(
     // (and every transitive child) is done.
     drop(tx_in);
 
-    // Single auditor task: owns Arc-shared services+config, runs the check
+    // Single auditor task: owns Arc-shared services, runs the check
     // kernel, forwards verdicts to the reporter.
-    let auditor = tokio::spawn(auditor_task(
-        services,
-        config,
-        root.clone(),
-        rx_in,
-        tx_out,
-        progress,
-    ));
+    let auditor = tokio::spawn(auditor_task(Arc::clone(&services), rx_in, tx_out, progress));
 
     // Single reporter task: consumes verdicts, accumulates in arrival order.
     let reporter = tokio::spawn(reporter_task(rx_out));
@@ -139,29 +129,27 @@ pub async fn run_pipeline(
 /// `--jobs 1`. Holding a permit across child `await` would deadlock when a
 /// child needs a permit the parent is squatting on.
 fn walk_dir(
-    fs: FsService,
+    services: Services,
     dir: PathBuf,
-    root: PathBuf,
     excludes: ExcludeMatcher,
     inherited: Option<Inherited>,
     tx_in: mpsc::Sender<FsMessage>,
     sem: Arc<Semaphore>,
 ) -> Pin<Box<dyn Future<Output = Result<(), Report<PipelineError>>> + Send>> {
     Box::pin(walk_dir_inner(
-        fs, dir, root, excludes, inherited, tx_in, sem,
+        services, dir, excludes, inherited, tx_in, sem,
     ))
 }
 
 async fn walk_dir_inner(
-    fs: FsService,
+    services: Services,
     dir: PathBuf,
-    root: PathBuf,
     excludes: ExcludeMatcher,
     inherited: Option<Inherited>,
     tx_in: mpsc::Sender<FsMessage>,
     sem: Arc<Semaphore>,
 ) -> Result<(), Report<PipelineError>> {
-    // 1. Acquire permit, run blocking I/O, drop permit — all before any await
+    let root = services.config.root().to_path_buf();
     //    on children. `descend` is sync (`std::fs`/walkdir), so it must run in
     //    `spawn_blocking` to avoid stalling the runtime thread.
     let dir_result = {
@@ -170,14 +158,14 @@ async fn walk_dir_inner(
             .await
             .change_context(PipelineError)
             .attach("semaphore closed")?;
-        let fs_clone = fs.clone();
+        let services_clone = services.clone();
         let excludes_clone = excludes.clone();
         let inherited_clone = inherited.clone();
         let dir_clone = dir.clone();
         let root_clone = root.clone();
         tokio::task::spawn_blocking(move || {
             descend(
-                &fs_clone,
+                &services_clone,
                 &dir_clone,
                 &root_clone,
                 &excludes_clone,
@@ -233,9 +221,8 @@ async fn walk_dir_inner(
     let mut handles = Vec::with_capacity(subdirs.len());
     for subdir in subdirs {
         let handle = tokio::spawn(walk_dir(
-            fs.clone(),
+            services.clone(),
             subdir,
-            root.clone(),
             excludes.clone(),
             effective.clone(),
             tx_in.clone(),
@@ -270,18 +257,10 @@ async fn walk_dir_inner(
 /// progress tick per asset so the CLI can stream progress to stderr.
 async fn auditor_task(
     services: Arc<Services>,
-    config: Arc<Config>,
-    root: PathBuf,
     mut rx_in: mpsc::Receiver<FsMessage>,
     tx_out: mpsc::Sender<Verdict>,
     progress: mpsc::Sender<()>,
 ) {
-    let ctx = AuditCtx {
-        services: &services,
-        config: &config,
-        root: &root,
-    };
-
     while let Some(msg) = rx_in.recv().await {
         let inputs = match msg {
             FsMessage::Asset(input) => vec![input],
@@ -297,7 +276,7 @@ async fn auditor_task(
             let verdicts = match input {
                 AuditInput::Asset(resolved) => {
                     let _ = progress.try_send(());
-                    audit_asset(&resolved, &ctx)
+                    audit_asset(&resolved, &services)
                 }
                 AuditInput::Orphan(path) => {
                     let _ = progress.try_send(());

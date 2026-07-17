@@ -3,11 +3,10 @@
 use std::path::PathBuf;
 
 use crate::config::{render_config_template, CONFIG_FILENAME};
+use crate::services::Services;
 use crate::AppError;
 use clap::Args;
 use error_stack::{Report, ResultExt};
-
-use crate::services::Services;
 
 use super::CommandStatus;
 
@@ -28,13 +27,17 @@ pub struct InitCmd {
 
 /// Run the init command.
 ///
+/// `init` is the sole creator of `LICENSES/`. The dispatch layer therefore
+/// skips the `LICENSES/` discovery walk for `init` and anchors `root` at
+/// `cmd.root` directly — so `services.config.root()` here is `cmd.root`.
+///
 /// # Errors
 ///
-/// Returns an error if services fail, an existing file is present without
-/// `--force`, or writing the file fails.
-pub fn run(cmd: &InitCmd) -> Result<CommandStatus, Report<AppError>> {
-    let services = Services::real(&cmd.root).change_context(AppError)?;
-    let path = cmd.root.join(CONFIG_FILENAME);
+/// Returns an error if an existing file is present without `--force`, or
+/// writing the file or creating `LICENSES/` fails.
+pub fn run(services: &Services, cmd: &InitCmd) -> Result<CommandStatus, Report<AppError>> {
+    let root = services.config.root();
+    let path = root.join(CONFIG_FILENAME);
 
     if services.fs.exists(&path) && !cmd.force {
         return Err(Report::new(AppError).attach(format!(
@@ -55,7 +58,7 @@ pub fn run(cmd: &InitCmd) -> Result<CommandStatus, Report<AppError>> {
     // that creates it; other commands discover it rather than create it.
     // create_dir_all is idempotent, so re-running init on an existing
     // project leaves an already-present LICENSES untouched.
-    let licenses_dir = cmd.root.join("LICENSES");
+    let licenses_dir = root.join("LICENSES");
     services
         .fs
         .create_dir_all(&licenses_dir)

@@ -8,7 +8,7 @@ use auditah::discovery::resolver::{resolve, ResolutionSource, MANIFEST_FILENAME,
 use temptree::temptree;
 
 mod common;
-use common::{default_excludes, real_fs};
+use common::default_excludes;
 
 #[test]
 fn sidecar_wins_over_manifest_in_same_dir() {
@@ -31,11 +31,11 @@ source = "https://example.com/pack"
 "#,
     };
     let root = tree.path();
-    let fs = real_fs();
+    let services = common::real_services(root);
     let asset = root.join("sword.glb");
 
     // When resolving.
-    let r = resolve(&fs, &asset, root).unwrap();
+    let r = resolve(&services, &asset, root).unwrap();
 
     // Then the sidecar wins and its license is used.
     assert!(
@@ -68,11 +68,11 @@ source = "https://example.com/child"
         }
     };
     let root = tree.path();
-    let fs = real_fs();
+    let services = common::real_services(root);
     let asset = root.join("sub").join("rock.glb");
 
     // When resolving the subdir asset.
-    let r = resolve(&fs, &asset, root).unwrap();
+    let r = resolve(&services, &asset, root).unwrap();
 
     // Then the subdir manifest wins (nearest).
     assert!(matches!(r.source, ResolutionSource::Manifest(_)));
@@ -99,11 +99,11 @@ source = "https://example.com"
         }
     };
     let root = tree.path();
-    let fs = real_fs();
+    let services = common::real_services(root);
     let asset = root.join("sub").join("leaf.glb");
 
     // When resolving the subdir asset.
-    let r = resolve(&fs, &asset, root).unwrap();
+    let r = resolve(&services, &asset, root).unwrap();
 
     // Then the parent manifest is the fallback.
     assert!(matches!(r.source, ResolutionSource::Manifest(_)));
@@ -117,11 +117,11 @@ fn uncovered_when_no_config_anywhere() {
         "orphan.glb": "binary"
     };
     let root = tree.path();
-    let fs = real_fs();
+    let services = common::real_services(root);
     let asset = root.join("orphan.glb");
 
     // When resolving.
-    let r = resolve(&fs, &asset, root).unwrap();
+    let r = resolve(&services, &asset, root).unwrap();
 
     // Then the source is None and no record is present.
     assert_eq!(r.source, ResolutionSource::None);
@@ -138,12 +138,12 @@ fn excluded_glob_is_not_enumerated_as_candidate() {
         }
     };
     let root = tree.path();
-    let fs = real_fs();
+    let services = common::real_services(root);
     let patterns = auditah::discovery::all_excludes(&["**/*.bak".to_string()]);
     let excludes = ExcludeMatcher::new(&patterns).unwrap();
 
     // When enumerating with the *.bak exclude.
-    let got = enumerate(&fs, root, &excludes).unwrap();
+    let got = enumerate(&services, root, &excludes).unwrap();
     let names: Vec<String> = got
         .iter()
         .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
@@ -166,10 +166,10 @@ fn sidecar_and_manifest_themselves_are_not_enumerated_as_assets() {
         "_manifest.toml": "metadata"
     };
     let root = tree.path();
-    let fs = real_fs();
+    let services = common::real_services(root);
 
     // When enumerating with default excludes.
-    let got = enumerate(&fs, root, &default_excludes()).unwrap();
+    let got = enumerate(&services, root, &default_excludes()).unwrap();
     let names: Vec<String> = got
         .iter()
         .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
@@ -195,11 +195,11 @@ source = "https://poly.pizza/m/download/Gunny-Sack"
 "#
     };
     let root = tree.path();
-    let fs = real_fs();
+    let services = common::real_services(root);
     let asset = root.join("Gunny Sack.glb");
 
     // When resolving the asset.
-    let r = resolve(&fs, &asset, root).unwrap();
+    let r = resolve(&services, &asset, root).unwrap();
 
     // Then the sidecar resolves with the correct title and author.
     assert!(matches!(r.source, ResolutionSource::Sidecar(_)));
@@ -222,10 +222,10 @@ source = "https://poly.pizza/m/download/Gunny-Sack"
 "#
     };
     let root = tree.path();
-    let fs = real_fs();
+    let services = common::real_services(root);
 
     // When enumerating the project root.
-    let got = enumerate(&fs, root, &default_excludes()).unwrap();
+    let got = enumerate(&services, root, &default_excludes()).unwrap();
 
     // Then the spaced filename survives the walk (one asset found, named correctly).
     assert_eq!(got.len(), 1);
@@ -250,11 +250,11 @@ source = "https://example.com"
 "#
     };
     let root = tree.path();
-    let fs = real_fs();
+    let services = common::real_services(root);
     let asset = root.join("sword.glb");
 
     // When resolving the asset.
-    let r = resolve(&fs, &asset, root).unwrap();
+    let r = resolve(&services, &asset, root).unwrap();
 
     // Then the legacy manifest is ignored — the asset is uncovered.
     assert_eq!(r.source, ResolutionSource::None);

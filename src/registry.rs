@@ -9,10 +9,12 @@
 //! Tests construct a registry in-memory via [`LicenseRegistry::builder`], or via
 //! [`LicenseRegistryBuilder::commit`] for tests that need files on disk.
 
-use std::{collections::HashMap, path::Path, path::PathBuf};
+use std::{collections::HashMap, path::Path, path::PathBuf, sync::Arc};
 
 use error_stack::{Report, ResultExt};
 use wherror::Error;
+
+use derive_more::Debug;
 
 use crate::model::license::LicenseRegistryEntry;
 use crate::model::terms::LicenseTerms;
@@ -82,6 +84,108 @@ impl LicenseRegistry {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+}
+
+/// Capability trait: look up license definitions in the registry.
+///
+/// Production backs this with [`LicenseRegistry`] (loaded from disk); tests
+/// may supply their own backend. Mirrors the `FsBackend` / `ClockBackend`
+/// capability pattern. `entries` returns a `Vec` (not `impl Iterator`) so the
+/// trait stays object-safe.
+pub trait RegistryBackend: Send + Sync {
+    /// Look up a license by id. `None` if unknown.
+    fn get(&self, id: &str) -> Option<&LicenseRegistryEntry>;
+
+    /// All registry entries, collected into a `Vec` for object safety.
+    fn entries(&self) -> Vec<&LicenseRegistryEntry>;
+
+    /// Number of registered licenses.
+    fn len(&self) -> usize;
+
+    /// Whether the registry is empty.
+    fn is_empty(&self) -> bool;
+
+    /// Backend name for debugging.
+    fn name(&self) -> &'static str;
+}
+
+impl RegistryBackend for LicenseRegistry {
+    fn get(&self, id: &str) -> Option<&LicenseRegistryEntry> {
+        self.entries.get(id)
+    }
+
+    fn entries(&self) -> Vec<&LicenseRegistryEntry> {
+        self.entries.values().collect()
+    }
+
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    fn name(&self) -> &'static str {
+        "LicenseRegistry"
+    }
+}
+
+/// Shared, cloneable wrapper around a [`RegistryBackend`] trait object. Cheap to
+/// clone (one [`Arc`] refcount); this is the type stored in
+/// [`crate::services::Services`].
+#[derive(Debug, Clone)]
+pub struct LicenseRegistryService {
+    #[debug("LicenseRegistryService<{}>", self.backend.name())]
+    backend: Arc<dyn RegistryBackend>,
+}
+
+impl LicenseRegistryService {
+    /// Wrap a backend. Cheap to clone (one [`Arc`] refcount).
+    #[must_use]
+    pub fn new(backend: Arc<dyn RegistryBackend>) -> Self {
+        Self { backend }
+    }
+
+    /// Look up a license by id. `None` if unknown.
+    #[must_use]
+    pub fn get(&self, id: &str) -> Option<&LicenseRegistryEntry> {
+        self.backend.get(id)
+    }
+
+    /// Iterate over all registry entries.
+    #[must_use]
+    pub fn entries(&self) -> Vec<&LicenseRegistryEntry> {
+        self.backend.entries()
+    }
+
+    /// Number of registered licenses.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.backend.len()
+    }
+
+    /// Whether the registry is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.backend.is_empty()
+    }
+
+    /// Load the registry from `LICENSES/*.toml` in `project_root` and wrap it.
+    ///
+    /// Bootstrap factory: takes a `&FsService` (not `&Services`) because the
+    /// registry is itself a backend being constructed before the container
+    /// exists. A missing `LICENSES/` directory yields an empty registry (no error).
+    ///
+    /// # Errors
+    ///
+    /// Returns `RegistryError` if a `LICENSES/*.toml` fails to parse or read.
+    pub fn load(fs: &FsService, project_root: &Path) -> Result<Self, Report<RegistryError>> {
+        Ok(Self::new(Arc::new(LicenseRegistry::load(
+            fs,
+            project_root,
+        )?)))
     }
 }
 
@@ -528,5 +632,43 @@ mod tests {
             entry.terms.requires_attribution,
             "CC-BY-4.0 must require named attribution"
         );
+    }
+
+    // --- LicenseRegistryService trait dispatch ---
+
+    #[test]
+    fn registry_service_resolves_built_license() {
+        // Given a service wrapping a registry seeded with one license.
+        let reg = LicenseRegistry::builder()
+            .license(LicenseSpec::new("LicenseRef-X"))
+            .build();
+        let svc = LicenseRegistryService::new(Arc::new(reg));
+
+        // When resolving the seeded id.
+        // Then it is present.
+        assert!(svc.get("LicenseRef-X").is_some());
+        // And an unknown id is absent.
+        assert!(svc.get("LicenseRef-Ghost").is_none());
+    }
+
+    #[test]
+    fn registry_service_len_and_is_empty_reflect_seed() {
+        // Given an empty service.
+        let empty = LicenseRegistryService::new(Arc::new(LicenseRegistry::empty()));
+        // Then it reports empty.
+        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
+
+        // Given a service seeded with two licenses.
+        let reg = LicenseRegistry::builder()
+            .license(LicenseSpec::new("LicenseRef-A"))
+            .license(LicenseSpec::new("LicenseRef-B"))
+            .build();
+        let seeded = LicenseRegistryService::new(Arc::new(reg));
+
+        // Then len and is_empty reflect the seed.
+        assert!(!seeded.is_empty());
+        assert_eq!(seeded.len(), 2);
+        assert_eq!(seeded.entries().len(), 2);
     }
 }

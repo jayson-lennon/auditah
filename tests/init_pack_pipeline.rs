@@ -8,7 +8,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auditah::audit::report::FindingCode;
-use auditah::audit::{run_audit, AuditCtx};
+use auditah::audit::run_audit;
 use auditah::registry::LicenseSpec;
 use common::{
     codes_for, non_commercial_config, permissive_terms, seed_license_text, services_with,
@@ -31,21 +31,19 @@ fn mit_provisioned_asset_passes_audit_without_missing_license_text() {
     // MIT is well-known and notice-preservation-only: requires_attribution = false,
     // requires_license_notice = true. The grid resolves via the embedded corpus;
     // only the legal text file must exist on disk.
-    let svc = services_with([LicenseSpec::new("MIT").terms({
-        let mut t = permissive_terms();
-        t.requires_license_notice = true;
-        t
-    })]);
-    seed_license_text(root, &["MIT"]);
-    let cfg = non_commercial_config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
+    let svc = services_with(
         root,
-    };
+        non_commercial_config(),
+        [LicenseSpec::new("MIT").terms({
+            let mut t = permissive_terms();
+            t.requires_license_notice = true;
+            t
+        })],
+    );
+    seed_license_text(root, &["MIT"]);
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then there is no MissingLicenseText finding for the asset.
     let codes = codes_for(&report, "hero.glb");
@@ -66,21 +64,19 @@ fn mit_asset_with_empty_title_passes_audit() {
             "title = \"\"\nauthor = \"Artist\"\nyear = 2024\nlicense = \"MIT\"\nsource = \"https://x\"\n",
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("MIT").terms({
-        let mut t = permissive_terms();
-        t.requires_license_notice = true;
-        t
-    })]);
-    seed_license_text(root, &["MIT"]);
-    let cfg = non_commercial_config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
+    let svc = services_with(
         root,
-    };
+        non_commercial_config(),
+        [LicenseSpec::new("MIT").terms({
+            let mut t = permissive_terms();
+            t.requires_license_notice = true;
+            t
+        })],
+    );
+    seed_license_text(root, &["MIT"]);
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then there is no IncompleteAttribution finding (MIT requires notice only).
     let codes = codes_for(&report, "sound.wav");
@@ -101,22 +97,20 @@ fn ccby_asset_missing_source_fails_incomplete_attribution() {
             "title = \"Track\"\nauthor = \"Artist\"\nyear = 2024\nlicense = \"CC-BY-4.0\"\nsource = \"\"\n",
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("CC-BY-4.0").terms({
-        let mut t = permissive_terms();
-        t.requires_attribution = true;
-        t.requires_license_notice = true;
-        t
-    })]);
-    seed_license_text(root, &["CC-BY-4.0"]);
-    let cfg = non_commercial_config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
+    let svc = services_with(
         root,
-    };
+        non_commercial_config(),
+        [LicenseSpec::new("CC-BY-4.0").terms({
+            let mut t = permissive_terms();
+            t.requires_attribution = true;
+            t.requires_license_notice = true;
+            t
+        })],
+    );
+    seed_license_text(root, &["CC-BY-4.0"]);
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then it FAILs with IncompleteAttribution (CC-BY genuinely requires credit).
     let codes = codes_for(&report, "music.ogg");

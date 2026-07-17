@@ -12,7 +12,6 @@ use std::path::{Path, PathBuf};
 use error_stack::{Report, ResultExt};
 use wherror::Error;
 
-use crate::config::Config;
 use crate::discovery::enumerator::{enumerate, ExcludeMatcher};
 use crate::discovery::resolver::resolve;
 use crate::model::attribution::AttributionRecord;
@@ -34,14 +33,6 @@ pub(crate) struct CreditEntry {
     modified_notice: Option<String>,
 }
 
-/// Subsystem context for credits generation.
-#[derive(Debug, Clone)]
-pub struct CreditsCtx<'a> {
-    pub services: &'a Services,
-    pub config: &'a Config,
-    pub root: &'a Path,
-}
-
 /// Collect attribution-bearing credit entries, grouped by author.
 /// CC0 and attribution-free licenses are omitted.
 ///
@@ -49,23 +40,24 @@ pub struct CreditsCtx<'a> {
 ///
 /// Returns `CreditsError` if enumeration or resolution fails.
 pub(crate) fn collect_credits(
-    ctx: &CreditsCtx,
+    services: &Services,
 ) -> Result<BTreeMap<String, Vec<CreditEntry>>, Report<CreditsError>> {
-    let excludes = build_excludes(ctx)?;
-    let assets = enumerate(&ctx.services.fs, ctx.root, &excludes)
+    let excludes = build_excludes(services)?;
+    let root = services.config.root();
+    let assets = enumerate(services, root, &excludes)
         .change_context(CreditsError)
         .attach("failed to enumerate assets for credits")?;
 
     let mut by_author: BTreeMap<String, Vec<CreditEntry>> = BTreeMap::new();
     for asset in &assets {
-        let Some(record) = resolve(&ctx.services.fs, asset, ctx.root)
+        let Some(record) = resolve(services, asset, root)
             .change_context(CreditsError)
             .attach("failed to resolve asset during credits generation")?
             .record
         else {
             continue;
         };
-        if let Some(entry) = entry_if_attribution_required(&record, ctx) {
+        if let Some(entry) = entry_if_attribution_required(&record, services) {
             by_author
                 .entry(record.author.clone())
                 .or_default()
@@ -85,8 +77,8 @@ pub(crate) fn collect_credits(
 /// # Errors
 ///
 /// Returns `CreditsError` if any exclude glob fails to compile.
-fn build_excludes(ctx: &CreditsCtx) -> Result<ExcludeMatcher, Report<CreditsError>> {
-    let patterns = crate::discovery::all_excludes(&ctx.config.exclude);
+fn build_excludes(services: &Services) -> Result<ExcludeMatcher, Report<CreditsError>> {
+    let patterns = crate::discovery::all_excludes(&services.config.config().exclude);
     ExcludeMatcher::new(&patterns)
         .change_context(CreditsError)
         .attach("invalid exclude glob in auditah.toml")
@@ -96,9 +88,9 @@ fn build_excludes(ctx: &CreditsCtx) -> Result<ExcludeMatcher, Report<CreditsErro
 /// Returns None when the effective terms do not require attribution.
 fn entry_if_attribution_required(
     record: &AttributionRecord,
-    ctx: &CreditsCtx,
+    services: &Services,
 ) -> Option<CreditEntry> {
-    let entry = ctx.services.registry.get(&record.license)?;
+    let entry = services.registry.get(&record.license)?;
     let terms = effective_terms(&entry.terms, &record.overrides);
     if !terms.requires_attribution {
         return None;
@@ -163,10 +155,13 @@ pub(crate) fn render_credits(by_author: &BTreeMap<String, Vec<CreditEntry>>) -> 
 /// # Errors
 ///
 /// Returns `CreditsError` on enumeration, resolution, or write failure.
-pub fn generate_credits(ctx: &CreditsCtx, output_path: &Path) -> Result<(), Report<CreditsError>> {
-    let by_author = collect_credits(ctx)?;
+pub fn generate_credits(
+    services: &Services,
+    output_path: &Path,
+) -> Result<(), Report<CreditsError>> {
+    let by_author = collect_credits(services)?;
     let markdown = render_credits(&by_author);
-    ctx.services
+    services
         .fs
         .write(output_path, &markdown)
         .change_context(CreditsError)

@@ -7,7 +7,7 @@ use error_stack::{Report, ResultExt};
 use wherror::Error;
 
 use crate::model::attribution::AttributionRecord;
-use crate::services::FsService;
+use crate::services::Services;
 
 /// Error resolving an asset's config.
 #[derive(Debug, Error)]
@@ -58,13 +58,13 @@ pub fn sidecar_path(asset: &Path) -> PathBuf {
 
 /// Walk up from the asset's directory; return the path of the first
 /// `_manifest.toml` found, or `None` if none exists up to (and including) `root`.
-fn find_nearest_manifest(fs: &FsService, asset: &Path, root: &Path) -> Option<PathBuf> {
+fn find_nearest_manifest(services: &Services, asset: &Path, root: &Path) -> Option<PathBuf> {
     let start = asset.parent()?;
     let root_parent = root.parent().unwrap_or(root);
     let mut dir = Some(start);
     while let Some(d) = dir {
         let candidate = d.join(MANIFEST_FILENAME);
-        if fs.exists(&candidate) {
+        if services.fs.exists(&candidate) {
             return Some(candidate);
         }
         if d == root || d == root_parent {
@@ -84,14 +84,14 @@ fn find_nearest_manifest(fs: &FsService, asset: &Path, root: &Path) -> Option<Pa
 ///
 /// Returns an error if a sidecar or manifest exists but cannot be read or parsed.
 pub fn resolve(
-    fs: &FsService,
+    services: &Services,
     asset: &Path,
     root: &Path,
 ) -> Result<ResolvedAsset, Report<ResolveError>> {
     // 1. Sidecar.
     let sidecar = sidecar_path(asset);
-    if fs.exists(&sidecar) {
-        let record = read_attribution(fs, &sidecar)?;
+    if services.fs.exists(&sidecar) {
+        let record = read_attribution(services, &sidecar)?;
         return Ok(ResolvedAsset {
             asset_path: asset.to_path_buf(),
             record: Some(record),
@@ -99,8 +99,8 @@ pub fn resolve(
         });
     }
     // 2. Nearest manifest.
-    if let Some(manifest) = find_nearest_manifest(fs, asset, root) {
-        let record = read_attribution(fs, &manifest)?;
+    if let Some(manifest) = find_nearest_manifest(services, asset, root) {
+        let record = read_attribution(services, &manifest)?;
         return Ok(ResolvedAsset {
             asset_path: asset.to_path_buf(),
             record: Some(record),
@@ -125,10 +125,11 @@ pub fn resolve(
 /// Returns an error if the file cannot be read or is not valid TOML matching
 /// the attribution schema.
 pub fn read_attribution(
-    fs: &FsService,
+    services: &Services,
     path: &Path,
 ) -> Result<AttributionRecord, Report<ResolveError>> {
-    let content = fs
+    let content = services
+        .fs
         .read_to_string(path)
         .change_context(ResolveError)
         .attach("failed to read attribution file")?;
@@ -149,6 +150,9 @@ pub(crate) fn strip_sidecar_suffix(sidecar: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
+    use crate::services::fs::FsService;
+    use crate::services::Services;
     use crate::test_support::FakeFs;
     use std::sync::Arc;
 
@@ -163,10 +167,14 @@ source = "https://example.com"
         )
     }
 
-    fn fs_with(files: &[(&str, &str)]) -> FsService {
-        FsService::new(Arc::new(FakeFs::with_files(
+    fn services_with(files: &[(&str, &str)]) -> Services {
+        let fs = FsService::new(Arc::new(FakeFs::with_files(
             files.iter().map(|(p, c)| (*p, *c)),
-        )))
+        )));
+        Services::test()
+            .fs(fs)
+            .config_root(Path::new("/proj"), Config::default())
+            .build()
     }
 
     #[test]
@@ -192,10 +200,10 @@ source = "https://example.com"
     #[test]
     fn resolve_returns_uncovered_when_no_config() {
         // Given an asset with no sidecar and no manifest.
-        let fs = fs_with(&[("/proj/sword.glb", "")]);
+        let services = services_with(&[("/proj/sword.glb", "")]);
 
         // When resolving.
-        let r = resolve(&fs, Path::new("/proj/sword.glb"), Path::new("/proj")).unwrap();
+        let r = resolve(&services, Path::new("/proj/sword.glb"), Path::new("/proj")).unwrap();
 
         // Then the source is None and no record is present.
         assert_eq!(r.source, ResolutionSource::None);
@@ -205,7 +213,7 @@ source = "https://example.com"
     #[test]
     fn resolve_uses_sidecar_when_present() {
         // Given an asset with a sidecar.
-        let fs = fs_with(&[
+        let services = services_with(&[
             ("/proj/sword.glb", ""),
             (
                 "/proj/sword.glb.attr.toml",
@@ -214,7 +222,7 @@ source = "https://example.com"
         ]);
 
         // When resolving.
-        let r = resolve(&fs, Path::new("/proj/sword.glb"), Path::new("/proj")).unwrap();
+        let r = resolve(&services, Path::new("/proj/sword.glb"), Path::new("/proj")).unwrap();
 
         // Then the sidecar is used and its license is parsed.
         assert!(matches!(r.source, ResolutionSource::Sidecar(_)));
@@ -224,7 +232,7 @@ source = "https://example.com"
     #[test]
     fn resolve_uses_nearest_manifest_when_no_sidecar() {
         // Given an asset with no sidecar but a directory manifest.
-        let fs = fs_with(&[
+        let services = services_with(&[
             ("/proj/assets/sword.glb", ""),
             (
                 "/proj/assets/_manifest.toml",
@@ -233,7 +241,12 @@ source = "https://example.com"
         ]);
 
         // When resolving.
-        let r = resolve(&fs, Path::new("/proj/assets/sword.glb"), Path::new("/proj")).unwrap();
+        let r = resolve(
+            &services,
+            Path::new("/proj/assets/sword.glb"),
+            Path::new("/proj"),
+        )
+        .unwrap();
 
         // Then the manifest is used and its license is parsed.
         assert!(matches!(r.source, ResolutionSource::Manifest(_)));
@@ -245,14 +258,19 @@ source = "https://example.com"
         // Given a parent and subdir manifest with different licenses.
         let parent = fake_record_toml("LicenseRef-Cc0");
         let child = fake_record_toml("LicenseRef-Mit");
-        let fs = fs_with(&[
+        let services = services_with(&[
             ("/proj/_manifest.toml", &parent),
             ("/proj/sub/_manifest.toml", &child),
             ("/proj/sub/sword.glb", ""),
         ]);
 
         // When resolving the subdir asset.
-        let r = resolve(&fs, Path::new("/proj/sub/sword.glb"), Path::new("/proj")).unwrap();
+        let r = resolve(
+            &services,
+            Path::new("/proj/sub/sword.glb"),
+            Path::new("/proj"),
+        )
+        .unwrap();
 
         // Then the subdir manifest wins (nearest).
         assert!(matches!(r.source, ResolutionSource::Manifest(_)));
@@ -262,7 +280,7 @@ source = "https://example.com"
     #[test]
     fn sidecar_overrides_manifest_in_same_dir() {
         // Given a dir with both a manifest and a per-file sidecar.
-        let fs = fs_with(&[
+        let services = services_with(&[
             ("/proj/sword.glb", ""),
             (
                 "/proj/sword.glb.attr.toml",
@@ -272,7 +290,7 @@ source = "https://example.com"
         ]);
 
         // When resolving.
-        let r = resolve(&fs, Path::new("/proj/sword.glb"), Path::new("/proj")).unwrap();
+        let r = resolve(&services, Path::new("/proj/sword.glb"), Path::new("/proj")).unwrap();
 
         // Then the sidecar wins over the manifest.
         assert!(matches!(r.source, ResolutionSource::Sidecar(_)));

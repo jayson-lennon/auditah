@@ -3,28 +3,15 @@
 //! `generate_notices` in isolation — the audit-gate is the caller's job.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::Path;
-
-use auditah::config::Config;
 use auditah::model::terms::LicenseTerms;
-use auditah::notices::{generate_notices, NoticesCtx};
+use auditah::notices::generate_notices;
 use auditah::registry::{LicenseRegistry, LicenseSpec};
-use auditah::services::Services;
+use auditah::test_support::ServicesTestBuilder;
 
 use temptree::temptree;
 
 mod common;
 use common::{config, real_fs, services_with};
-
-// --- helpers ---
-
-fn ctx<'a>(svc: &'a Services, cfg: &'a Config, root: &'a Path) -> NoticesCtx<'a> {
-    NoticesCtx {
-        services: svc,
-        config: cfg,
-        root,
-    }
-}
 
 const SIDECAR_A: &str = r#"
 title = "Alpha"
@@ -34,11 +21,9 @@ license = "LicenseRef-Notice"
 source = "https://example.com"
 "#;
 
-// --- tests ---
-
 #[test]
-fn notices_dedupes_multiple_assets_under_same_license() {
-    // Given two assets under the same notice-required license.
+fn notices_dedupes_multiple_assets_sharing_one_license() {
+    // Given two assets covered by the same notice-required license.
     let tree = temptree! {
         "a.glb": "",
         "a.glb.attr.toml": SIDECAR_A,
@@ -46,16 +31,19 @@ fn notices_dedupes_multiple_assets_under_same_license() {
         "b.glb.attr.toml": SIDECAR_A,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-Notice").terms(LicenseTerms {
-        requires_license_notice: true,
-        ..LicenseTerms::permissive()
-    })]);
+    let svc = services_with(
+        root,
+        config(),
+        [LicenseSpec::new("LicenseRef-Notice").terms(LicenseTerms {
+            requires_license_notice: true,
+            ..LicenseTerms::permissive()
+        })],
+    );
     common::seed_license_text(root, &["LicenseRef-Notice"]);
-    let cfg = config();
     let out = root.join("NOTICES.md");
 
     // When generating NOTICES.
-    generate_notices(&ctx(&svc, &cfg, root), &out).expect("notices generation");
+    generate_notices(&svc, &out).expect("notices generation");
     let notices = std::fs::read_to_string(&out).expect("NOTICES readable");
 
     // Then the license section appears exactly once (deduped).
@@ -77,13 +65,12 @@ source = "https://x"
 "#,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-CC0Like")]);
+    let svc = services_with(root, config(), [LicenseSpec::new("LicenseRef-CC0Like")]);
     common::seed_license_text(root, &["LicenseRef-CC0Like"]);
-    let cfg = config();
     let out = root.join("NOTICES.md");
 
     // When generating NOTICES.
-    generate_notices(&ctx(&svc, &cfg, root), &out).expect("notices generation");
+    generate_notices(&svc, &out).expect("notices generation");
     let notices = std::fs::read_to_string(&out).expect("NOTICES readable");
 
     // Then no license section appears (placeholder only).
@@ -101,16 +88,19 @@ fn notices_reproduces_text_for_notice_required_license() {
         "a.glb.attr.toml": SIDECAR_A,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-Notice").terms(LicenseTerms {
-        requires_license_notice: true,
-        ..LicenseTerms::permissive()
-    })]);
+    let svc = services_with(
+        root,
+        config(),
+        [LicenseSpec::new("LicenseRef-Notice").terms(LicenseTerms {
+            requires_license_notice: true,
+            ..LicenseTerms::permissive()
+        })],
+    );
     common::seed_license_text(root, &["LicenseRef-Notice"]);
-    let cfg = config();
     let out = root.join("NOTICES.md");
 
     // When generating NOTICES.
-    generate_notices(&ctx(&svc, &cfg, root), &out).expect("notices generation");
+    generate_notices(&svc, &out).expect("notices generation");
     let notices = std::fs::read_to_string(&out).expect("NOTICES readable");
 
     // Then the license text body appears under the header.
@@ -131,12 +121,11 @@ fn notices_empty_project_shows_placeholder() {
         "auditah.toml": "",
     };
     let root = tree.path();
-    let svc = services_with([]);
-    let cfg = config();
+    let svc = services_with(root, config(), []);
     let out = root.join("NOTICES.md");
 
     // When generating NOTICES.
-    generate_notices(&ctx(&svc, &cfg, root), &out).expect("notices generation");
+    generate_notices(&svc, &out).expect("notices generation");
     let notices = std::fs::read_to_string(&out).expect("NOTICES readable");
 
     // Then the placeholder appears.
@@ -168,22 +157,25 @@ source = "https://y"
 "#,
     };
     let root = tree.path();
-    let svc = services_with([
-        LicenseSpec::new("LicenseRef-MITLike").terms(LicenseTerms {
-            requires_license_notice: true,
-            ..LicenseTerms::permissive()
-        }),
-        LicenseSpec::new("LicenseRef-BSDLike").terms(LicenseTerms {
-            requires_license_notice: true,
-            ..LicenseTerms::permissive()
-        }),
-    ]);
+    let svc = services_with(
+        root,
+        config(),
+        [
+            LicenseSpec::new("LicenseRef-MITLike").terms(LicenseTerms {
+                requires_license_notice: true,
+                ..LicenseTerms::permissive()
+            }),
+            LicenseSpec::new("LicenseRef-BSDLike").terms(LicenseTerms {
+                requires_license_notice: true,
+                ..LicenseTerms::permissive()
+            }),
+        ],
+    );
     common::seed_license_text(root, &["LicenseRef-MITLike", "LicenseRef-BSDLike"]);
-    let cfg = config();
     let out = root.join("NOTICES.md");
 
     // When generating NOTICES.
-    generate_notices(&ctx(&svc, &cfg, root), &out).expect("notices generation");
+    generate_notices(&svc, &out).expect("notices generation");
     let notices = std::fs::read_to_string(&out).expect("NOTICES readable");
 
     // Then both sections appear.
@@ -208,11 +200,11 @@ fn notices_reads_text_from_disk_via_real_services() {
         .expect("commit");
     common::seed_license_text(root, &["LicenseRef-Notice"]);
 
-    // When generating NOTICES via real Services (loads from disk).
-    let svc = Services::real(root).expect("services");
-    let cfg = Config::load(&svc.fs, root).expect("config");
+    let svc = ServicesTestBuilder::load_from_disk(root)
+        .expect("load real services from disk")
+        .build();
     let out = root.join("NOTICES.md");
-    generate_notices(&ctx(&svc, &cfg, root), &out).expect("notices generation");
+    generate_notices(&svc, &out).expect("notices generation");
     let notices = std::fs::read_to_string(&out).expect("NOTICES readable");
 
     // Then the on-disk text was read and reproduced.

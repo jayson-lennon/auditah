@@ -17,7 +17,6 @@ use std::path::{Path, PathBuf};
 use error_stack::{Report, ResultExt};
 use wherror::Error;
 
-use crate::config::Config;
 use crate::discovery::enumerator::{enumerate, ExcludeMatcher};
 use crate::discovery::resolver::resolve;
 use crate::services::Services;
@@ -26,14 +25,6 @@ use crate::services::Services;
 #[derive(Debug, Error)]
 #[error(debug)]
 pub struct NoticesError;
-
-/// Subsystem context for NOTICES generation.
-#[derive(Debug, Clone)]
-pub struct NoticesCtx<'a> {
-    pub services: &'a Services,
-    pub config: &'a Config,
-    pub root: &'a Path,
-}
 
 /// Per-license text entry: the license's canonical name + its full legal text.
 #[derive(Debug, Clone)]
@@ -57,22 +48,25 @@ pub(crate) struct LicenseText {
 /// # Errors
 ///
 /// Returns `NoticesError` if enumeration, resolution, or text read fails.
-pub(crate) fn collect_notices(ctx: &NoticesCtx) -> Result<Vec<LicenseText>, Report<NoticesError>> {
-    let excludes = build_excludes(ctx)?;
-    let assets = enumerate(&ctx.services.fs, ctx.root, &excludes)
+pub(crate) fn collect_notices(
+    services: &Services,
+) -> Result<Vec<LicenseText>, Report<NoticesError>> {
+    let excludes = build_excludes(services)?;
+    let root = services.config.root();
+    let assets = enumerate(services, root, &excludes)
         .change_context(NoticesError)
         .attach("failed to enumerate assets for NOTICES")?;
 
     let mut by_license: BTreeMap<String, LicenseText> = BTreeMap::new();
     for asset in &assets {
-        let Some(record) = resolve(&ctx.services.fs, asset, ctx.root)
+        let Some(record) = resolve(services, asset, root)
             .change_context(NoticesError)
             .attach("failed to resolve asset during NOTICES generation")?
             .record
         else {
             continue;
         };
-        let Some(entry) = ctx.services.registry.get(&record.license) else {
+        let Some(entry) = services.registry.get(&record.license) else {
             continue;
         };
         if !entry.terms.requires_license_notice {
@@ -81,9 +75,8 @@ pub(crate) fn collect_notices(ctx: &NoticesCtx) -> Result<Vec<LicenseText>, Repo
         if by_license.contains_key(&entry.id) {
             continue;
         }
-        let text_path = ctx.root.join("LICENSES").join(format!("{}.txt", entry.id));
-        let text = ctx
-            .services
+        let text_path = root.join("LICENSES").join(format!("{}.txt", entry.id));
+        let text = services
             .fs
             .read_to_string(&text_path)
             .change_context(NoticesError)
@@ -111,8 +104,8 @@ pub(crate) fn collect_notices(ctx: &NoticesCtx) -> Result<Vec<LicenseText>, Repo
 /// # Errors
 ///
 /// Returns `NoticesError` if any exclude glob fails to compile.
-fn build_excludes(ctx: &NoticesCtx) -> Result<ExcludeMatcher, Report<NoticesError>> {
-    let patterns = crate::discovery::all_excludes(&ctx.config.exclude);
+fn build_excludes(services: &Services) -> Result<ExcludeMatcher, Report<NoticesError>> {
+    let patterns = crate::discovery::all_excludes(&services.config.config().exclude);
     ExcludeMatcher::new(&patterns)
         .change_context(NoticesError)
         .attach("invalid exclude glob in auditah.toml")
@@ -149,10 +142,13 @@ pub(crate) fn render_notices(licenses: &[LicenseText]) -> String {
 /// # Errors
 ///
 /// Returns `NoticesError` on enumeration/resolution failure or write failure.
-pub fn generate_notices(ctx: &NoticesCtx, output_path: &Path) -> Result<(), Report<NoticesError>> {
-    let licenses = collect_notices(ctx)?;
+pub fn generate_notices(
+    services: &Services,
+    output_path: &Path,
+) -> Result<(), Report<NoticesError>> {
+    let licenses = collect_notices(services)?;
     let markdown = render_notices(&licenses);
-    ctx.services
+    services
         .fs
         .write(output_path, &markdown)
         .change_context(NoticesError)

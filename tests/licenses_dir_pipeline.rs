@@ -6,27 +6,29 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auditah::audit::report::{FindingCode, Severity};
-use auditah::audit::{run_audit, AuditCtx};
-use auditah::registry::{LicenseRegistry, LicenseSpec};
-use auditah::services::clock::RealClock;
-use auditah::services::fs::{FsService, RealFs};
-use auditah::services::{ClockService, Services};
-use std::sync::Arc;
+use auditah::audit::run_audit;
+use auditah::registry::{LicenseRegistry, LicenseRegistryService, LicenseSpec};
+use auditah::services::fs::RealFs;
 use temptree::temptree;
 
 mod common;
+use auditah::services::fs::FsService;
 use common::{codes_for, config};
+use std::sync::Arc;
 
-fn services_with_license(license_id: &str) -> Services {
+fn services_with_license(root: &std::path::Path, license_id: &str) -> auditah::services::Services {
     let _ = license_id;
     let registry = LicenseRegistry::builder()
         .license(LicenseSpec::new("LicenseRef-Custom"))
         .build();
-    Services {
-        fs: FsService::new(Arc::new(RealFs::new())),
-        registry,
-        clock: ClockService::new(Arc::new(RealClock::new())),
-    }
+    auditah::services::Services::test()
+        .fs(FsService::new(Arc::new(RealFs::new())))
+        .registry(LicenseRegistryService::new(Arc::new(registry)))
+        .config(auditah::services::config::ConfigService::new(
+            std::sync::Arc::from(root),
+            std::sync::Arc::new(config()),
+        ))
+        .build()
 }
 
 // A covered LicenseRef-Custom asset with no LICENSES/ directory → FAIL MissingLicenseText.
@@ -38,16 +40,10 @@ fn audit_fails_when_license_text_missing() {
         "statue.glb.attr.toml": "title = \"Statue\"\nauthor = \"S\"\nyear = 2020\nlicense = \"LicenseRef-Custom\"\nsource = \"https://x\"\n",
     };
     let root = tree.path();
-    let svc = services_with_license("LicenseRef-Custom");
-    let cfg = config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = services_with_license(root, "LicenseRef-Custom");
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the asset FAILs as MissingLicenseText.
     assert!(report.has_failures());
@@ -70,16 +66,10 @@ fn audit_passes_when_license_text_present() {
         },
     };
     let root = tree.path();
-    let svc = services_with_license("LicenseRef-Custom");
-    let cfg = config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = services_with_license(root, "LicenseRef-Custom");
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the audit is clean.
     assert!(

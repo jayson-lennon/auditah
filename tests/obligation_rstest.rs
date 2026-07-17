@@ -6,7 +6,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auditah::audit::report::FindingCode;
-use auditah::audit::{run_audit, AuditCtx};
+use auditah::audit::run_audit;
 use auditah::config::Config;
 use temptree::temptree;
 
@@ -99,18 +99,17 @@ fn obligation_violation_surfaces_expected_finding_code(
     }
     // A permissive-with-attribution license covers the attribution-requiring cases;
     // the unknown/uncovered cases never resolve against it.
-    let svc = services_with([LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
-        requires_attribution: true,
-        ..permissive_terms()
-    })]);
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &config,
+    let svc = services_with(
         root,
-    };
+        config.clone(),
+        [LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
+            requires_attribution: true,
+            ..permissive_terms()
+        })],
+    );
 
     // When running the audit.
-    let report = run_audit(&ctx).expect("audit runs");
+    let report = run_audit(&svc).expect("audit runs");
 
     // Then the violated obligation surfaces its exact FindingCode.
     let codes = codes_for(&report, asset_name);

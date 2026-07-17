@@ -18,7 +18,6 @@ use std::path::{Path, PathBuf};
 use error_stack::{Report, ResultExt};
 use wherror::Error;
 
-use crate::config::Config;
 use crate::discovery::enumerator::{enumerate, ExcludeMatcher};
 use crate::discovery::resolver::resolve;
 use crate::model::terms::LicenseTerms;
@@ -28,14 +27,6 @@ use crate::services::Services;
 #[derive(Debug, Error)]
 #[error(debug)]
 pub struct BomError;
-
-/// Subsystem context for BOM generation.
-#[derive(Debug, Clone)]
-pub struct BomCtx<'a> {
-    pub services: &'a Services,
-    pub config: &'a Config,
-    pub root: &'a Path,
-}
 
 /// One asset tracked by the BOM: its path and whether it has been modified
 /// from the original.
@@ -68,22 +59,23 @@ pub(crate) struct LicenseSummary {
 /// # Errors
 ///
 /// Returns `BomError` if enumeration or resolution fails.
-pub(crate) fn collect_bom(ctx: &BomCtx) -> Result<Vec<LicenseSummary>, Report<BomError>> {
-    let excludes = build_excludes(ctx)?;
-    let assets = enumerate(&ctx.services.fs, ctx.root, &excludes)
+pub(crate) fn collect_bom(services: &Services) -> Result<Vec<LicenseSummary>, Report<BomError>> {
+    let excludes = build_excludes(services)?;
+    let root = services.config.root();
+    let assets = enumerate(services, root, &excludes)
         .change_context(BomError)
         .attach("failed to enumerate assets for BOM")?;
 
     let mut by_license: BTreeMap<String, LicenseSummary> = BTreeMap::new();
     for asset in &assets {
-        let Some(record) = resolve(&ctx.services.fs, asset, ctx.root)
+        let Some(record) = resolve(services, asset, root)
             .change_context(BomError)
             .attach("failed to resolve asset during BOM generation")?
             .record
         else {
             continue;
         };
-        let Some(entry) = ctx.services.registry.get(&record.license) else {
+        let Some(entry) = services.registry.get(&record.license) else {
             continue;
         };
         let summary = by_license
@@ -116,8 +108,8 @@ pub(crate) fn collect_bom(ctx: &BomCtx) -> Result<Vec<LicenseSummary>, Report<Bo
 /// # Errors
 ///
 /// Returns `BomError` if any exclude glob fails to compile.
-fn build_excludes(ctx: &BomCtx) -> Result<ExcludeMatcher, Report<BomError>> {
-    let patterns = crate::discovery::all_excludes(&ctx.config.exclude);
+fn build_excludes(services: &Services) -> Result<ExcludeMatcher, Report<BomError>> {
+    let patterns = crate::discovery::all_excludes(&services.config.config().exclude);
     ExcludeMatcher::new(&patterns)
         .change_context(BomError)
         .attach("invalid exclude glob in auditah.toml")
@@ -298,10 +290,10 @@ fn render_terms_bullets(terms: &LicenseTerms) -> String {
 /// Returns `BomError` if BOM collection/render/write fails. The audit
 /// gate is the caller's responsibility (`generate` runs it once before any
 /// artifact generation).
-pub fn generate_bom(ctx: &BomCtx, output_path: &Path) -> Result<(), Report<BomError>> {
-    let summaries = collect_bom(ctx)?;
+pub fn generate_bom(services: &Services, output_path: &Path) -> Result<(), Report<BomError>> {
+    let summaries = collect_bom(services)?;
     let markdown = render_bom(&summaries);
-    ctx.services
+    services
         .fs
         .write(output_path, &markdown)
         .change_context(BomError)

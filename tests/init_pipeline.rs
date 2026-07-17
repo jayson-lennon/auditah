@@ -29,7 +29,7 @@ fn init_writes_commented_config_when_absent() {
     let root = tree.path();
 
     // When running init.
-    let status = run(&init_cmd(root, false)).expect("init");
+    let status = run(&common::real_services(root), &init_cmd(root, false)).expect("init");
 
     // Then it succeeds, writes the file, and it round-trips to defaults.
     assert_eq!(status, CommandStatus::Success);
@@ -52,7 +52,7 @@ fn init_prints_wrote_line() {
     let root = tree.path();
 
     // When running init.
-    let status = run(&init_cmd(root, false)).expect("init");
+    let status = run(&common::real_services(root), &init_cmd(root, false)).expect("init");
 
     // Then the file lands at <root>/auditah.toml and the command succeeds.
     assert_eq!(status, CommandStatus::Success);
@@ -70,7 +70,7 @@ fn init_refuses_existing_file_without_force() {
     let original = std::fs::read_to_string(config_path(root)).expect("read");
 
     // When running init without --force.
-    let result = run(&init_cmd(root, false));
+    let result = run(&common::real_services(root), &init_cmd(root, false));
 
     // Then it errors and leaves the file untouched.
     assert!(result.is_err());
@@ -93,7 +93,7 @@ fn init_force_overwrites_existing_file() {
     let root = tree.path();
 
     // When running init with --force.
-    let status = run(&init_cmd(root, true)).expect("init --force");
+    let status = run(&common::real_services(root), &init_cmd(root, true)).expect("init --force");
 
     // Then it overwrites with the commented template.
     assert_eq!(status, CommandStatus::Success);
@@ -110,7 +110,7 @@ fn init_creates_licenses_directory() {
     let root = tree.path();
 
     // When running init.
-    let status = run(&init_cmd(root, false)).expect("init");
+    let status = run(&common::real_services(root), &init_cmd(root, false)).expect("init");
 
     // Then the LICENSES/ directory exists.
     assert_eq!(status, CommandStatus::Success);
@@ -130,7 +130,7 @@ fn init_leaves_existing_licenses_directory_untouched() {
     let original = std::fs::read_to_string(&seed).expect("read seed");
 
     // When running init again.
-    let status = run(&init_cmd(root, true)).expect("init idempotent");
+    let status = run(&common::real_services(root), &init_cmd(root, true)).expect("init idempotent");
 
     // Then the directory still exists and the seed file is unchanged.
     assert_eq!(status, CommandStatus::Success);

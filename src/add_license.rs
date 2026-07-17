@@ -9,7 +9,6 @@ use wherror::Error;
 use crate::model::terms::LicenseTerms;
 use crate::services::Services;
 
-use crate::services::clock::ClockService;
 use crate::well_known::{self, ResolveResult};
 use crate::AppError;
 
@@ -348,8 +347,11 @@ pub(crate) fn provision_license(
 /// Resolve the copyright year when `--year` is omitted: read the wall
 /// clock via `clock` and map epoch seconds to a calendar year. On a broken
 /// or pre-epoch clock, fall back to `2026`.
-pub(crate) fn year_from_clock(clock: &ClockService) -> u16 {
-    clock.now_epoch_secs().map_or(2026, year_from_epoch_secs)
+pub(crate) fn year_from_clock(services: &Services) -> u16 {
+    services
+        .clock
+        .now_epoch_secs()
+        .map_or(2026, year_from_epoch_secs)
 }
 
 /// Map Unix epoch seconds to an approximate calendar year.
@@ -365,7 +367,7 @@ pub(crate) fn year_from_epoch_secs(secs: u64) -> u16 {
 mod tests {
     use super::*;
     use crate::services::clock::ClockService;
-    use crate::test_support::FakeClock;
+    use crate::test_support::{FakeClock, ServicesTestBuilder};
     use std::sync::Arc;
     use temptree::temptree;
 
@@ -420,10 +422,12 @@ mod tests {
     #[test]
     fn year_from_clock_maps_a_fixed_instant_to_its_year() {
         // Given a FakeClock pinned to a 2019-01-01 epoch-second instant.
-        let clock = ClockService::new(Arc::new(FakeClock::fixed(1_546_322_400)));
+        let services = Services::test()
+            .clock(ClockService::new(Arc::new(FakeClock::fixed(1_546_322_400))))
+            .build();
 
         // When resolving the default year from the clock.
-        let year = year_from_clock(&clock);
+        let year = year_from_clock(&services);
 
         // Then the year is 2019 (not 56 / 0 — the original bug).
         assert_eq!(year, 2019);
@@ -432,10 +436,12 @@ mod tests {
     #[test]
     fn year_from_clock_falls_back_to_2026_when_clock_is_broken() {
         // Given a FakeClock that always fails (models a pre-epoch clock).
-        let clock = ClockService::new(Arc::new(FakeClock::broken()));
+        let services = Services::test()
+            .clock(ClockService::new(Arc::new(FakeClock::broken())))
+            .build();
 
         // When resolving the default year from the broken clock.
-        let year = year_from_clock(&clock);
+        let year = year_from_clock(&services);
 
         // Then the year is the 2026 fallback rather than erroring or panicking.
         assert_eq!(year, 2026);
@@ -461,7 +467,7 @@ mod tests {
             "id = \"MIT\"\nname = \"handwritten\"\nurl = \"https://x\"\n[terms]\nrequires_attribution = false\nrequires_license_notice = true\nrequires_source_disclosure = false\nderivatives = \"allowed\"\nrequires_modification_notice = false\nallows_commercial_use = true\nallows_redistribution = true\nmanual_review = false\n",
         )
         .unwrap();
-        let svc = Services::real(&root).unwrap();
+        let svc = ServicesTestBuilder::load_from_disk(&root).unwrap().build();
         let original = std::fs::read_to_string(root.join("LICENSES/MIT.toml")).unwrap();
 
         // When provisioning MIT.
@@ -477,7 +483,7 @@ mod tests {
     fn provision_installs_text_and_grid_for_well_known_id() {
         // Given a project whose LICENSES/ is empty.
         let (_tree, root) = empty_project_with_licenses();
-        let svc = Services::real(&root).unwrap();
+        let svc = ServicesTestBuilder::load_from_disk(&root).unwrap().build();
 
         // When provisioning MIT (well-known, absent).
         provision_license(&svc, &root.join("LICENSES"), "MIT").unwrap();
@@ -502,7 +508,7 @@ mod tests {
     fn provision_hard_errors_when_id_is_unknown_and_absent() {
         // Given a project whose LICENSES/ has no StudioEULA grid.
         let (_tree, root) = empty_project_with_licenses();
-        let svc = Services::real(&root).unwrap();
+        let svc = ServicesTestBuilder::load_from_disk(&root).unwrap().build();
 
         // When provisioning an unknown id.
         let result = provision_license(&svc, &root.join("LICENSES"), "StudioEULA");

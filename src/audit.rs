@@ -16,7 +16,6 @@ use error_stack::{Report, ResultExt};
 use wherror::Error;
 
 use crate::audit::cascade::{descend, AuditInput, DirResult};
-use crate::config::Config;
 use crate::discovery::enumerator::ExcludeMatcher;
 use crate::discovery::resolver::{ResolutionSource, ResolvedAsset};
 use crate::model::terms::effective_terms;
@@ -29,16 +28,7 @@ use report::{Finding, FindingCode, Verdict};
 #[error(debug)]
 pub struct AuditError;
 
-/// Subsystem context: everything the audit subsystem needs to run.
-/// Discovery + resolution + registry + config all flow through here.
-#[derive(Debug, Clone)]
-pub struct AuditCtx<'a> {
-    pub services: &'a Services,
-    pub config: &'a Config,
-    pub root: &'a Path,
-}
-
-/// Run the full audit pipeline over `ctx.root` as a synchronous depth-first
+/// Run the full audit pipeline over the project root as a synchronous depth-first
 /// cascade. Each directory is listed once; the inherited attribution record
 /// descends from root and is fully replaced by any local `_manifest.toml`.
 ///
@@ -49,22 +39,16 @@ pub struct AuditCtx<'a> {
 ///
 /// Returns `AuditError` if the root directory cannot be listed or a local
 /// manifest cannot be read or parsed.
-pub fn run_audit(ctx: &AuditCtx) -> Result<report::AuditReport, Report<AuditError>> {
-    let excludes = build_excludes(ctx.config)?;
+pub fn run_audit(services: &Services) -> Result<report::AuditReport, Report<AuditError>> {
+    let root = services.config.root();
+    let excludes = build_excludes(services)?;
     let mut report = report::AuditReport::default();
     let mut inputs: Vec<AuditInput> = Vec::new();
-    cascade_collect(
-        &ctx.services.fs,
-        ctx.root,
-        ctx.root,
-        &excludes,
-        None,
-        &mut inputs,
-    )?;
+    cascade_collect(services, root, root, &excludes, None, &mut inputs)?;
     for input in inputs {
         match input {
             AuditInput::Asset(resolved) => {
-                for verdict in audit_asset(&resolved, ctx) {
+                for verdict in audit_asset(&resolved, services) {
                     push_verdict(verdict, &mut report);
                 }
             }
@@ -99,7 +83,7 @@ fn push_verdict(verdict: Verdict, report: &mut report::AuditReport) {
 /// are not collected), siblings continue, and the error is surfaced to the
 /// caller as a single `AuditError`.
 fn cascade_collect(
-    fs: &crate::services::FsService,
+    services: &Services,
     dir: &Path,
     root: &Path,
     excludes: &ExcludeMatcher,
@@ -111,7 +95,7 @@ fn cascade_collect(
         orphans,
         effective,
         subdirs,
-    } = descend(fs, dir, root, excludes, inherited)?;
+    } = descend(services, dir, root, excludes, inherited)?;
     for resolved in assets {
         out.push(AuditInput::Asset(resolved));
     }
@@ -119,7 +103,7 @@ fn cascade_collect(
         out.push(AuditInput::Orphan(orphan));
     }
     for subdir in subdirs {
-        cascade_collect(fs, &subdir, root, excludes, effective.clone(), out)?;
+        cascade_collect(services, &subdir, root, excludes, effective.clone(), out)?;
     }
     Ok(())
 }
@@ -134,10 +118,8 @@ fn cascade_collect(
 /// Build the exclude matcher from the user config's exclude globs merged with
 /// the built-in defaults. Shared by the sync and async audit paths.
 ///
-pub(crate) fn build_excludes(
-    config: &crate::config::Config,
-) -> Result<ExcludeMatcher, Report<AuditError>> {
-    let patterns = crate::discovery::all_excludes(&config.exclude);
+pub(crate) fn build_excludes(services: &Services) -> Result<ExcludeMatcher, Report<AuditError>> {
+    let patterns = crate::discovery::all_excludes(&services.config.config().exclude);
     ExcludeMatcher::new(&patterns)
         .change_context(AuditError)
         .attach("invalid exclude glob in auditah.toml")
@@ -148,7 +130,7 @@ pub(crate) fn build_excludes(
 /// [`Verdict::Failed`] per failed obligation (an asset can fail more than one).
 /// Pure: no I/O, no mutation, deterministic given the registry + config.
 #[must_use]
-pub fn audit_asset(resolved: &ResolvedAsset, ctx: &AuditCtx) -> Vec<Verdict> {
+pub fn audit_asset(resolved: &ResolvedAsset, services: &Services) -> Vec<Verdict> {
     let asset = &resolved.asset_path;
     let mut findings: Vec<Finding> = Vec::new();
 
@@ -157,13 +139,13 @@ pub fn audit_asset(resolved: &ResolvedAsset, ctx: &AuditCtx) -> Vec<Verdict> {
         return findings_into_verdicts(asset, findings);
     };
 
-    check_resolution(asset, record.license.as_str(), ctx, &mut findings);
-    let Some(entry) = ctx.services.registry.get(&record.license) else {
+    check_resolution(asset, record.license.as_str(), services, &mut findings);
+    let Some(entry) = services.registry.get(&record.license) else {
         return findings_into_verdicts(asset, findings);
     };
-    check_license_text(asset, &entry.id, ctx, &mut findings);
+    check_license_text(asset, &entry.id, services, &mut findings);
     let terms = effective_terms(&entry.terms, &record.overrides);
-    check_obligations(asset, record, &entry.id, &terms, ctx.config, &mut findings);
+    check_obligations(asset, record, &entry.id, &terms, services, &mut findings);
     findings_into_verdicts(asset, findings)
 }
 
@@ -201,8 +183,13 @@ fn check_coverage(asset: &Path, source: &ResolutionSource, findings: &mut Vec<Fi
 }
 
 /// Resolution: the declared license must exist in the registry.
-fn check_resolution(asset: &Path, license_id: &str, ctx: &AuditCtx, findings: &mut Vec<Finding>) {
-    if ctx.services.registry.get(license_id).is_none() {
+fn check_resolution(
+    asset: &Path,
+    license_id: &str,
+    services: &Services,
+    findings: &mut Vec<Finding>,
+) {
+    if services.registry.get(license_id).is_none() {
         findings.push(Finding::fail(
             FindingCode::UnknownLicense,
             asset.to_path_buf(),
@@ -212,9 +199,18 @@ fn check_resolution(asset: &Path, license_id: &str, ctx: &AuditCtx, findings: &m
 }
 
 /// License text presence: the referenced license must have a LICENSES/<id>.txt file.
-fn check_license_text(asset: &Path, license_id: &str, ctx: &AuditCtx, findings: &mut Vec<Finding>) {
-    let text_path = ctx.root.join("LICENSES").join(format!("{license_id}.txt"));
-    if !ctx.services.fs.exists(&text_path) {
+fn check_license_text(
+    asset: &Path,
+    license_id: &str,
+    services: &Services,
+    findings: &mut Vec<Finding>,
+) {
+    let text_path = services
+        .config
+        .root()
+        .join("LICENSES")
+        .join(format!("{license_id}.txt"));
+    if !services.fs.exists(&text_path) {
         findings.push(Finding::fail(
             FindingCode::MissingLicenseText,
             asset.to_path_buf(),
@@ -235,14 +231,14 @@ fn check_obligations(
     record: &crate::model::attribution::AttributionRecord,
     license_id: &str,
     terms: &crate::model::terms::LicenseTerms,
-    config: &Config,
+    services: &Services,
     findings: &mut Vec<Finding>,
 ) {
     check_attribution(asset, record, terms, findings);
-    check_commercial_boundary(asset, terms, config, findings);
-    check_redistribution_boundary(asset, terms, config, findings);
+    check_commercial_boundary(asset, terms, services, findings);
+    check_redistribution_boundary(asset, terms, services, findings);
     check_derivatives_boundary(asset, record, terms, findings);
-    check_manual_review(asset, license_id, terms, config, findings);
+    check_manual_review(asset, license_id, terms, services, findings);
 }
 
 /// Attribution: needs title + author + source when the obligation is set.
@@ -277,9 +273,10 @@ fn check_attribution(
 fn check_commercial_boundary(
     asset: &Path,
     terms: &crate::model::terms::LicenseTerms,
-    config: &Config,
+    services: &Services,
     findings: &mut Vec<Finding>,
 ) {
+    let config = services.config.config();
     if config.commercial_project && !terms.allows_commercial_use {
         findings.push(Finding::fail(
             FindingCode::NotCommerciallyLicensed,
@@ -293,9 +290,10 @@ fn check_commercial_boundary(
 fn check_redistribution_boundary(
     asset: &Path,
     terms: &crate::model::terms::LicenseTerms,
-    config: &Config,
+    services: &Services,
     findings: &mut Vec<Finding>,
 ) {
+    let config = services.config.config();
     if config.redistributes_assets && !terms.allows_redistribution {
         findings.push(Finding::fail(
             FindingCode::RedistributionViolation,
@@ -338,9 +336,10 @@ fn check_manual_review(
     asset: &Path,
     license_id: &str,
     terms: &crate::model::terms::LicenseTerms,
-    config: &Config,
+    services: &Services,
     findings: &mut Vec<Finding>,
 ) {
+    let config = services.config.config();
     let acknowledged = config
         .manual_review_acknowledged
         .iter()
@@ -361,36 +360,41 @@ fn check_manual_review(
 mod tests {
     use super::*;
     use crate::audit::report::Verdict;
+    use crate::config::Config;
     use crate::discovery::resolver::{ResolutionSource, ResolvedAsset};
     use crate::model::attribution::AttributionRecord;
     use crate::model::terms::{Derivatives, LicenseTerms, Overrides};
-    use crate::registry::{LicenseRegistry, LicenseSpec};
+    use crate::registry::{LicenseRegistry, LicenseRegistryService, LicenseSpec};
     use crate::services::fs::FsService;
-    use crate::services::{ClockService, RealClock, Services};
+    use crate::services::Services;
     use crate::test_support::FakeFs;
     use std::sync::Arc;
 
     // --- shared fixtures ---
 
-    fn ctx_with(
-        registry: &LicenseRegistry,
-        files: &[(&str, &str)],
-    ) -> (Services, Config, std::path::PathBuf) {
-        let fs = FsService::new(Arc::new(FakeFs::with_files(
-            files.iter().map(|(p, c)| (format!("/proj/{p}"), *c)),
-        )));
-        let services = Services::from_parts(
-            fs,
-            registry.clone(),
-            ClockService::new(Arc::new(RealClock::new())),
-        );
-        let config = Config {
+    fn default_config() -> Config {
+        Config {
             commercial_project: false,
             redistributes_assets: false,
             manual_review_acknowledged: Vec::new(),
             exclude: Vec::new(),
-        };
-        (services, config, std::path::PathBuf::from("/proj"))
+        }
+    }
+
+    // Build a fake Services seeded with per-license text files on demand. The
+    // audit_asset tests resolve LICENSES/<id>.txt; this helper stages a text
+    // file for each id the test will reference.
+    fn services_with_files(registry: &LicenseRegistry, config: Config, files: &[&str]) -> Services {
+        let files: Vec<(String, &str)> = files
+            .iter()
+            .map(|f| (format!("/proj/{f}"), "text"))
+            .collect();
+        let fs = FsService::new(Arc::new(FakeFs::with_files(files)));
+        Services::test()
+            .fs(fs)
+            .registry(LicenseRegistryService::new(Arc::new(registry.clone())))
+            .config_root(std::path::Path::new("/proj"), config)
+            .build()
     }
 
     fn clean_record(license: &str) -> AttributionRecord {
@@ -437,17 +441,13 @@ mod tests {
         let reg = LicenseRegistry::builder()
             .license(LicenseSpec::new("LicenseRef-Mit"))
             .build();
-        let (services, config, root) = ctx_with(&reg, &[("LICENSES/LicenseRef-Mit.txt", "text")]);
-        let ctx = AuditCtx {
-            services: &services,
-            config: &config,
-            root: &root,
-        };
+        let services =
+            services_with_files(&reg, default_config(), &["LICENSES/LicenseRef-Mit.txt"]);
 
         // When auditing a fully-covered asset.
         let v = audit_asset(
             &resolved("/proj/a.glb", Some(clean_record("LicenseRef-Mit"))),
-            &ctx,
+            &services,
         );
 
         // Then the only verdict is Accepted.
@@ -457,15 +457,10 @@ mod tests {
     #[test]
     fn uncovered_asset_fails_unlicensed() {
         // Given an asset with no record (no cascade reaches it).
-        let (services, config, root) = ctx_with(&LicenseRegistry::empty(), &[]);
-        let ctx = AuditCtx {
-            services: &services,
-            config: &config,
-            root: &root,
-        };
+        let services = services_with_files(&LicenseRegistry::empty(), default_config(), &[]);
 
         // When auditing it.
-        let v = audit_asset(&resolved("/proj/a.glb", None), &ctx);
+        let v = audit_asset(&resolved("/proj/a.glb", None), &services);
 
         // Then it fails as UnlicensedAsset.
         assert!(v
@@ -476,17 +471,12 @@ mod tests {
     #[test]
     fn unknown_license_fails() {
         // Given an empty registry (the declared license won't resolve).
-        let (services, config, root) = ctx_with(&LicenseRegistry::empty(), &[]);
-        let ctx = AuditCtx {
-            services: &services,
-            config: &config,
-            root: &root,
-        };
+        let services = services_with_files(&LicenseRegistry::empty(), default_config(), &[]);
 
         // When auditing an asset declaring a license absent from the registry.
         let v = audit_asset(
             &resolved("/proj/a.glb", Some(clean_record("LicenseRef-Ghost"))),
-            &ctx,
+            &services,
         );
 
         // Then it fails as UnknownLicense.
@@ -501,17 +491,12 @@ mod tests {
         let reg = LicenseRegistry::builder()
             .license(LicenseSpec::new("LicenseRef-Mit"))
             .build();
-        let (services, config, root) = ctx_with(&reg, &[]);
-        let ctx = AuditCtx {
-            services: &services,
-            config: &config,
-            root: &root,
-        };
+        let services = services_with_files(&reg, default_config(), &[]);
 
         // When auditing an asset under that license.
         let v = audit_asset(
             &resolved("/proj/a.glb", Some(clean_record("LicenseRef-Mit"))),
-            &ctx,
+            &services,
         );
 
         // Then it fails as MissingLicenseText.
@@ -528,17 +513,12 @@ mod tests {
         let reg = LicenseRegistry::builder()
             .license(LicenseSpec::new("LicenseRef-By").terms(terms))
             .build();
-        let (services, config, root) = ctx_with(&reg, &[("LICENSES/LicenseRef-By.txt", "text")]);
-        let ctx = AuditCtx {
-            services: &services,
-            config: &config,
-            root: &root,
-        };
+        let services = services_with_files(&reg, default_config(), &["LICENSES/LicenseRef-By.txt"]);
 
         // When auditing an asset whose record omits the author.
         let mut rec = clean_record("LicenseRef-By");
         rec.author.clear();
-        let v = audit_asset(&resolved("/proj/a.glb", Some(rec)), &ctx);
+        let v = audit_asset(&resolved("/proj/a.glb", Some(rec)), &services);
 
         // Then it fails as IncompleteAttribution.
         assert!(v
@@ -552,19 +532,14 @@ mod tests {
         let reg = LicenseRegistry::builder()
             .license(LicenseSpec::new("LicenseRef-Nc").terms(non_commercial_terms()))
             .build();
-        let (services, mut config, root) =
-            ctx_with(&reg, &[("LICENSES/LicenseRef-Nc.txt", "text")]);
+        let mut config = default_config();
         config.commercial_project = true;
-        let ctx = AuditCtx {
-            services: &services,
-            config: &config,
-            root: &root,
-        };
+        let services = services_with_files(&reg, config, &["LICENSES/LicenseRef-Nc.txt"]);
 
         // When auditing an asset under the non-commercial license.
         let v = audit_asset(
             &resolved("/proj/a.glb", Some(clean_record("LicenseRef-Nc"))),
-            &ctx,
+            &services,
         );
 
         // Then it fails as NotCommerciallyLicensed.
@@ -581,19 +556,14 @@ mod tests {
         let reg = LicenseRegistry::builder()
             .license(LicenseSpec::new("LicenseRef-NoRed").terms(terms))
             .build();
-        let (services, mut config, root) =
-            ctx_with(&reg, &[("LICENSES/LicenseRef-NoRed.txt", "text")]);
+        let mut config = default_config();
         config.redistributes_assets = true;
-        let ctx = AuditCtx {
-            services: &services,
-            config: &config,
-            root: &root,
-        };
+        let services = services_with_files(&reg, config, &["LICENSES/LicenseRef-NoRed.txt"]);
 
         // When auditing an asset under that license.
         let v = audit_asset(
             &resolved("/proj/a.glb", Some(clean_record("LicenseRef-NoRed"))),
-            &ctx,
+            &services,
         );
 
         // Then it fails as RedistributionViolation.
@@ -611,17 +581,12 @@ mod tests {
                     .terms(LicenseTerms::permissive().with_derivatives(Derivatives::Disallowed)),
             )
             .build();
-        let (services, config, root) = ctx_with(&reg, &[("LICENSES/LicenseRef-Nd.txt", "text")]);
-        let ctx = AuditCtx {
-            services: &services,
-            config: &config,
-            root: &root,
-        };
+        let services = services_with_files(&reg, default_config(), &["LICENSES/LicenseRef-Nd.txt"]);
 
         // When auditing a modified asset under that license.
         let mut rec = clean_record("LicenseRef-Nd");
         rec.modified = true;
-        let v = audit_asset(&resolved("/proj/a.glb", Some(rec)), &ctx);
+        let v = audit_asset(&resolved("/proj/a.glb", Some(rec)), &services);
 
         // Then it fails as ModifiedUnderNoDerivatives.
         assert!(v
@@ -637,17 +602,12 @@ mod tests {
         let reg = LicenseRegistry::builder()
             .license(LicenseSpec::new("LicenseRef-Mr").terms(terms))
             .build();
-        let (services, config, root) = ctx_with(&reg, &[("LICENSES/LicenseRef-Mr.txt", "text")]);
-        let ctx = AuditCtx {
-            services: &services,
-            config: &config,
-            root: &root,
-        };
+        let services = services_with_files(&reg, default_config(), &["LICENSES/LicenseRef-Mr.txt"]);
 
         // When auditing an asset under that license.
         let v = audit_asset(
             &resolved("/proj/a.glb", Some(clean_record("LicenseRef-Mr"))),
-            &ctx,
+            &services,
         );
 
         // Then it fails as ManualReviewRequired.

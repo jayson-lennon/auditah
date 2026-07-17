@@ -9,7 +9,7 @@
 //!   never lost in compliance-finding noise.
 
 use std::io::IsTerminal;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,7 +23,6 @@ use super::CommandStatus;
 use crate::audit::build_excludes;
 use crate::audit::pipeline::run_pipeline;
 use crate::audit::report::Verdict;
-use crate::config::Config;
 use crate::services::Services;
 use crate::AppError;
 
@@ -51,21 +50,12 @@ pub struct AuditCmd {
 /// # Errors
 ///
 /// Returns an error if the services, config, or audit pipeline fail.
-pub fn run(cmd: &AuditCmd, cwd: &Path) -> Result<CommandStatus, Report<AppError>> {
-    // Resolve the project root by walking up from --root for a LICENSES/ dir.
-    // The tool cannot function without one; discovery failure is a hard error
-    // pointing at `auditah init`.
-    let root = crate::project::resolve_or_error(cwd, &cmd.root)?;
-    let services = Services::real(&root).change_context(AppError)?;
-    let config = Config::load(&services.fs, &root)
-        .change_context(AppError)
-        .attach("failed to load config")?;
-    let excludes = build_excludes(&config)
+pub fn run(services: &Services, cmd: &AuditCmd) -> Result<CommandStatus, Report<AppError>> {
+    let excludes = build_excludes(services)
         .change_context(AppError)
         .attach("failed to build exclude matcher")?;
-
-    let services = Arc::new(services);
-    let config = Arc::new(config);
+    // The async pipeline needs an owned, cloneable handle; clone Services in.
+    let services = Arc::new(services.clone());
 
     let rt = Runtime::new()
         .change_context(AppError)
@@ -74,8 +64,6 @@ pub fn run(cmd: &AuditCmd, cwd: &Path) -> Result<CommandStatus, Report<AppError>
         let (progress_tx, mut progress_rx) = mpsc::channel::<()>(cmd.jobs.max(1) * 4);
         let pipeline = tokio::spawn(run_pipeline(
             Arc::clone(&services),
-            Arc::clone(&config),
-            root.clone(),
             excludes,
             cmd.jobs,
             progress_tx,

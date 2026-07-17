@@ -2,10 +2,7 @@
 //! Asserts on the generated CREDITS.md content (the public contract).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::Path;
-
-use auditah::config::Config;
-use auditah::credits::{generate_credits, CreditsCtx};
+use auditah::credits::generate_credits;
 use auditah::services::Services;
 use temptree::temptree;
 
@@ -15,19 +12,11 @@ use auditah::registry::LicenseSpec;
 use common::{non_commercial_config, permissive_terms, services_with};
 
 /// Generate credits to `<root>/CREDITS.md` and return the file contents.
-fn generated(ctx: &CreditsCtx) -> String {
-    let root = ctx.root;
+fn generated(svc: &Services) -> String {
+    let root = svc.config.root();
     let out = root.join("CREDITS.md");
-    generate_credits(ctx, &out).expect("credits generation should succeed");
+    generate_credits(svc, &out).expect("credits generation should succeed");
     std::fs::read_to_string(&out).expect("CREDITS.md should be readable")
-}
-
-fn ctx<'a>(svc: &'a Services, cfg: &'a Config, root: &'a Path) -> CreditsCtx<'a> {
-    CreditsCtx {
-        services: svc,
-        config: cfg,
-        root,
-    }
 }
 
 // CC0 (attribution-free) assets are omitted from credits entirely.
@@ -45,11 +34,14 @@ source = "https://poly.pizza"
 "#
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-Cc0").terms(permissive_terms())]);
-    let cfg = non_commercial_config();
+    let svc = services_with(
+        root,
+        non_commercial_config(),
+        [LicenseSpec::new("LicenseRef-Cc0").terms(permissive_terms())],
+    );
 
     // When generating credits.
-    let content = generated(&ctx(&svc, &cfg, root));
+    let content = generated(&svc);
 
     // Then the credits note no attribution-required assets and the CC0 asset is omitted.
     assert!(
@@ -94,14 +86,17 @@ source = "https://example.com/c"
 "#
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
-        requires_attribution: true,
-        ..permissive_terms()
-    })]);
-    let cfg = non_commercial_config();
+    let svc = services_with(
+        root,
+        non_commercial_config(),
+        [LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
+            requires_attribution: true,
+            ..permissive_terms()
+        })],
+    );
 
     // When generating credits.
-    let content = generated(&ctx(&svc, &cfg, root));
+    let content = generated(&svc);
 
     // Then both author headers are present and entries are title-sorted within each group.
     assert!(content.contains("## Oliver Herklotz"));
@@ -136,12 +131,15 @@ requires_modification_notice = {mod_notice_override}
         "asset.glb.attr.toml": sidecar,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
-        requires_attribution: true,
-        ..permissive_terms()
-    })]);
-    let cfg = non_commercial_config();
-    generated(&ctx(&svc, &cfg, root))
+    let svc = services_with(
+        root,
+        non_commercial_config(),
+        [LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
+            requires_attribution: true,
+            ..permissive_terms()
+        })],
+    );
+    generated(&svc)
 }
 
 #[test]

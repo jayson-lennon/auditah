@@ -4,12 +4,11 @@
 use std::path::PathBuf;
 
 use crate::config::{ack_ids, render_config_template, CONFIG_FILENAME};
+use crate::services::Services;
 use crate::well_known::{self, ResolveResult};
 use crate::AppError;
 use clap::Args;
 use error_stack::{Report, ResultExt};
-
-use crate::services::Services;
 
 use super::CommandStatus;
 
@@ -38,15 +37,17 @@ pub struct AckCmd {
 
 /// Run the ack command.
 ///
+/// Reads the project root from `services.config`; no per-command bootstrap.
+///
 /// # Errors
 ///
-/// Returns an error if services fail or the existing `auditah.toml` cannot be
-/// read, parsed, or written.
-pub fn run(cmd: &AckCmd) -> Result<CommandStatus, Report<AppError>> {
-    let services = Services::real(&cmd.root).change_context(AppError)?;
-    let path = cmd.root.join(CONFIG_FILENAME);
+/// Returns an error if the existing `auditah.toml` cannot be read, parsed, or
+/// written.
+pub fn run(services: &Services, cmd: &AckCmd) -> Result<CommandStatus, Report<AppError>> {
+    let root = services.config.root();
+    let path = root.join(CONFIG_FILENAME);
 
-    warn_unknown_ids(&services, &cmd.ids);
+    warn_unknown_ids(services, &cmd.ids);
 
     if !services.fs.exists(&path) {
         let content = render_config_template(&cmd.ids);

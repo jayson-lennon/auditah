@@ -4,17 +4,15 @@
 //! the three internal generators: CREDITS.md (attribution), NOTICES.md
 //! (license text reproduction), and BOM.md (compliance obligations).
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
+use crate::audit::run_audit;
+use crate::bom::{default_output_path as bom_default, generate_bom};
+use crate::credits::{default_output_path as credits_default, generate_credits};
+use crate::notices::{default_output_path as notices_default, generate_notices};
+use crate::services::Services;
 use crate::AppError;
 use clap::Args;
-
-use crate::audit::{run_audit, AuditCtx};
-use crate::bom::{default_output_path as bom_default, generate_bom, BomCtx};
-use crate::config::Config;
-use crate::credits::{default_output_path as credits_default, generate_credits, CreditsCtx};
-use crate::notices::{default_output_path as notices_default, generate_notices, NoticesCtx};
-use crate::services::Services;
 use error_stack::{Report, ResultExt};
 
 use super::CommandStatus;
@@ -45,22 +43,12 @@ pub struct GenerateCmd {
 ///
 /// Returns an error if services, config load, audit-gate, or any generator
 /// fails.
-pub fn run(cmd: &GenerateCmd, cwd: &Path) -> Result<CommandStatus, Report<AppError>> {
-    let root = crate::project::resolve_or_error(cwd, &cmd.root)?;
-    let services = Services::real(&root).change_context(AppError)?;
-    // Reborrow as &Path for the ctx structs; the owned PathBuf stays alive above.
-    let root = root.as_path();
-    let config = Config::load(&services.fs, root)
-        .change_context(AppError)
-        .attach("failed to load config")?;
+pub fn run(services: &Services, cmd: &GenerateCmd) -> Result<CommandStatus, Report<AppError>> {
+    // root is part of the shared container; read it out for default output paths.
+    let root = services.config.root();
 
     // Audit gate: no artifacts on a failing project.
-    let audit_ctx = AuditCtx {
-        services: &services,
-        config: &config,
-        root,
-    };
-    let report = run_audit(&audit_ctx).change_context(AppError)?;
+    let report = run_audit(services).change_context(AppError)?;
     if report.has_failures() {
         return Err(Report::new(AppError)
             .attach(format!(
@@ -88,29 +76,13 @@ pub fn run(cmd: &GenerateCmd, cwd: &Path) -> Result<CommandStatus, Report<AppErr
         .unwrap_or_else(|| notices_default(root));
     let output_bom = cmd.output_bom.clone().unwrap_or_else(|| bom_default(root));
 
-    let credits_ctx = CreditsCtx {
-        services: &services,
-        config: &config,
-        root,
-    };
-    let notices_ctx = NoticesCtx {
-        services: &services,
-        config: &config,
-        root,
-    };
-    let bom_ctx = BomCtx {
-        services: &services,
-        config: &config,
-        root,
-    };
-
-    generate_credits(&credits_ctx, &output_credits)
+    generate_credits(services, &output_credits)
         .change_context(AppError)
         .attach("failed to generate CREDITS.md")?;
-    generate_notices(&notices_ctx, &output_notices)
+    generate_notices(services, &output_notices)
         .change_context(AppError)
         .attach("failed to generate NOTICES.md")?;
-    generate_bom(&bom_ctx, &output_bom)
+    generate_bom(services, &output_bom)
         .change_context(AppError)
         .attach("failed to generate BOM.md")?;
 

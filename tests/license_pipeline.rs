@@ -4,7 +4,6 @@
 use auditah::add_license::{
     license_grid_path, license_ref_id, render_license_template, write_license_template,
 };
-use auditah::services::Services;
 use std::path::Path;
 use temptree::temptree;
 
@@ -16,7 +15,7 @@ fn add_license_writes_default_fail_grid_for_licenseref_name() {
     // Given an empty project root and a Services backed by a real fs.
     let tree = temptree! {};
     let root = tree.path();
-    let services = Services::real(root).expect("services");
+    let services = common::real_services(root);
 
     // When writing the template for "Foo".
     let path = write_license_template(&services, root, "Foo").expect("write");
@@ -106,7 +105,7 @@ fn add_license_refuses_to_overwrite_existing_grid() {
         }
     };
     let root = tree.path();
-    let services = Services::real(root).expect("services");
+    let services = common::real_services(root);
 
     // When writing the template again.
     let result = write_license_template(&services, root, "Foo");
@@ -126,7 +125,7 @@ fn add_license_writes_to_explicit_root() {
     // Given an explicit non-default root.
     let tree = temptree! {};
     let root = tree.path();
-    let services = Services::real(root).expect("services");
+    let services = common::real_services(root);
 
     // When writing with that root.
     let path = write_license_template(&services, root, "Bar").expect("write");
@@ -215,7 +214,7 @@ fn add_license_well_known_authored_extracts_text_and_grid() {
     };
 
     // When running add-license MIT.
-    let status = run(&cmd, &root).expect("run");
+    let status = run(&common::real_services(&root), &cmd).expect("run");
 
     // Then it succeeds, and both the text and authored grid are written.
     assert_eq!(status, CommandStatus::Success);
@@ -243,7 +242,7 @@ fn add_license_well_known_case_insensitive_writes_canonical_casing() {
     };
 
     // When running add-license mit (lowercase).
-    let status = run(&cmd, &root).expect("run");
+    let status = run(&common::real_services(&root), &cmd).expect("run");
 
     // Then the on-disk files use canonical casing (MIT, not mit).
     assert_eq!(status, CommandStatus::Success);
@@ -274,7 +273,7 @@ fn add_license_well_known_no_grid_writes_text_and_placeholder_grid() {
     };
 
     // When running add-license Bzip2-1.0.6.
-    let status = run(&cmd, &root).expect("run");
+    let status = run(&common::real_services(&root), &cmd).expect("run");
 
     // Then both files are written; the grid is the default_fail() placeholder.
     assert_eq!(status, CommandStatus::Success);
@@ -300,7 +299,7 @@ fn add_license_custom_writes_licenseref_default_fail_grid() {
     };
 
     // When running add-license --custom Foo.
-    let status = run(&cmd, &root).expect("run");
+    let status = run(&common::real_services(&root), &cmd).expect("run");
 
     // Then it writes LicenseRef-Foo.toml with default_fail() shape; no .txt.
     assert_eq!(status, CommandStatus::Success);
@@ -328,7 +327,7 @@ fn add_license_custom_on_known_spdx_id_errors() {
     };
 
     // When running add-license --custom MIT.
-    let result = run(&cmd, &root);
+    let result = run(&common::real_services(&root), &cmd);
 
     // Then it errors (known id must use the non-custom path).
     assert!(result.is_err(), "--custom MIT must error");
@@ -348,7 +347,7 @@ fn add_license_unknown_spdx_id_without_custom_errors() {
     };
 
     // When running add-license NotReal.
-    let result = run(&cmd, &root);
+    let result = run(&common::real_services(&root), &cmd);
 
     // Then it errors (unknown SPDX id).
     assert!(result.is_err(), "unknown SPDX id must error");

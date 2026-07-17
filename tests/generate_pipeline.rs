@@ -66,7 +66,7 @@ fn run_generate(
         output_notices: Some(out_notices.to_path_buf()),
         output_bom: Some(out_bom.to_path_buf()),
     };
-    run(&cmd, root)
+    run(&common::real_services(root), &cmd)
 }
 
 fn defaults(root: &Path) -> (PathBuf, PathBuf, PathBuf) {

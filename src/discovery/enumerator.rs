@@ -7,7 +7,7 @@ use error_stack::{Report, ResultExt};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use wherror::Error;
 
-use crate::services::FsService;
+use crate::services::Services;
 
 /// Error building the exclude matcher or walking the filesystem.
 #[derive(Debug, Error)]
@@ -68,11 +68,11 @@ impl ExcludeMatcher {
 ///
 /// Returns an error if the filesystem walk fails.
 pub fn enumerate(
-    fs: &FsService,
+    services: &Services,
     root: &Path,
     excludes: &ExcludeMatcher,
 ) -> Result<Vec<PathBuf>, Report<EnumerateError>> {
-    let all = fs.walk(root).change_context(EnumerateError)?;
+    let all = services.fs.walk(root).change_context(EnumerateError)?;
     Ok(filter_candidates(&all, root, excludes))
 }
 
@@ -124,11 +124,18 @@ pub fn partition_listing(entries: &[crate::services::DirEntry]) -> DirListing {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
+    use crate::services::fs::FsService;
+    use crate::services::Services;
     use crate::test_support::FakeFs;
     use std::sync::Arc;
 
-    fn fs_with(paths: &[&str]) -> FsService {
-        FsService::new(Arc::new(FakeFs::with_files(paths.iter().map(|p| (*p, "")))))
+    fn services_with(paths: &[&str]) -> Services {
+        let fs = FsService::new(Arc::new(FakeFs::with_files(paths.iter().map(|p| (*p, "")))));
+        Services::test()
+            .fs(fs)
+            .config_root(Path::new("/proj"), Config::default())
+            .build()
     }
 
     #[test]
@@ -158,7 +165,7 @@ mod tests {
     #[test]
     fn enumerate_filters_excluded_paths() {
         // Given a fake filesystem with mixed assets and excluded files.
-        let fs = fs_with(&[
+        let services = services_with(&[
             "/proj/assets/sword.glb",
             "/proj/Cargo.toml",
             "/proj/sword.glb.attr.toml",
@@ -168,7 +175,7 @@ mod tests {
         let excludes = ExcludeMatcher::new(&crate::discovery::all_excludes(&[])).unwrap();
 
         // When enumerating with default excludes.
-        let got = enumerate(&fs, Path::new("/proj"), &excludes).unwrap();
+        let got = enumerate(&services, Path::new("/proj"), &excludes).unwrap();
         let names: Vec<String> = got
             .iter()
             .map(|p| p.file_name().unwrap().to_string_lossy().to_string())

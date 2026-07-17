@@ -26,7 +26,7 @@ use crate::discovery::resolver::{
     MANIFEST_FILENAME, SIDECAR_SUFFIX,
 };
 use crate::model::attribution::AttributionRecord;
-use crate::services::FsService;
+use crate::services::Services;
 
 /// Manifest filename, re-exported so the cascade classifies entries by name
 /// without reaching into the resolver module's internals.
@@ -92,22 +92,23 @@ pub enum AuditInput {
 /// `_manifest.toml` exists but cannot be read or parsed. The caller emits a
 /// `Verdict::Error` for the latter and does not descend the subtree.
 pub fn descend(
-    fs: &FsService,
+    services: &Services,
     dir: &Path,
     root: &Path,
     excludes: &ExcludeMatcher,
     inherited: Option<Inherited>,
 ) -> Result<DirResult, Report<AuditError>> {
-    let entries = fs
+    let entries = services
+        .fs
         .list_dir_typed(dir)
         .change_context(AuditError)
         .attach("failed to list directory for cascade")?;
     let listing = partition_listing(&entries);
 
     let local_manifest = local_manifest_path(&listing.files);
-    let effective = resolve_effective(fs, local_manifest.as_deref(), inherited)?;
+    let effective = resolve_effective(services, local_manifest.as_deref(), inherited)?;
 
-    let assets = resolve_assets(fs, &listing.files, effective.as_ref(), root, excludes);
+    let assets = resolve_assets(services, &listing.files, effective.as_ref(), root, excludes);
     let orphans = detect_orphans(&listing.files);
     let subdirs = prune_subdirs(&listing.dirs, root, excludes);
 
@@ -135,13 +136,13 @@ fn local_manifest_path(files: &[PathBuf]) -> Option<PathBuf> {
 ///
 /// Returns `AuditError` if a local manifest exists but cannot be read/parsed.
 fn resolve_effective(
-    fs: &FsService,
+    services: &Services,
     local_manifest: Option<&Path>,
     inherited: Option<Inherited>,
 ) -> Result<Option<Inherited>, Report<AuditError>> {
     match local_manifest {
         Some(path) => {
-            let record = read_attribution(fs, path)
+            let record = read_attribution(services, path)
                 .change_context(AuditError)
                 .attach("failed to read local manifest")?;
             Ok(Some(Inherited {
@@ -157,7 +158,7 @@ fn resolve_effective(
 /// not metadata (not a manifest, not a sidecar) and not excluded. Precedence
 /// per asset: sidecar override > effective inherited > uncovered.
 fn resolve_assets(
-    fs: &FsService,
+    services: &Services,
     files: &[PathBuf],
     effective: Option<&Inherited>,
     root: &Path,
@@ -167,19 +168,19 @@ fn resolve_assets(
         .iter()
         .filter(|f| !is_metadata(f))
         .filter(|f| !is_excluded(f, root, excludes))
-        .map(|asset| resolve_one(fs, asset, effective))
+        .map(|asset| resolve_one(services, asset, effective))
         .collect()
 }
 
 /// Resolve a single asset: sidecar > effective > uncovered.
-fn resolve_one(fs: &FsService, asset: &Path, effective: Option<&Inherited>) -> ResolvedAsset {
+fn resolve_one(services: &Services, asset: &Path, effective: Option<&Inherited>) -> ResolvedAsset {
     let sidecar = sidecar_path(asset);
-    if fs.exists(&sidecar) {
+    if services.fs.exists(&sidecar) {
         // Sidecar read errors are surfaced at audit time via the record the
         // auditor validates; the cascade treats an unreadable sidecar as
         // "present but unresolved" and lets the auditor raise UnknownLicense.
         // ResolutionSource still marks it as Sidecar so the finding lands.
-        return match read_attribution(fs, &sidecar) {
+        return match read_attribution(services, &sidecar) {
             Ok(record) => ResolvedAsset {
                 asset_path: asset.to_path_buf(),
                 record: Some(record),
@@ -269,14 +270,20 @@ fn is_excluded(path: &Path, root: &Path, excludes: &ExcludeMatcher) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
     use crate::discovery::all_excludes;
+    use crate::services::fs::FsService;
+    use crate::services::Services;
     use crate::test_support::FakeFs;
     use std::sync::Arc;
 
-    fn fs_with(files: &[(&str, &str)]) -> FsService {
-        FsService::new(Arc::new(FakeFs::with_files(
-            files.iter().map(|(p, c)| (*p, *c)),
-        )))
+    fn services_with(files: &[(&str, &str)]) -> (Services, Arc<FakeFs>) {
+        let fs = Arc::new(FakeFs::with_files(files.iter().map(|(p, c)| (*p, *c))));
+        let services = Services::test()
+            .fs(FsService::new(fs.clone()))
+            .config_root(Path::new("/proj"), Config::default())
+            .build();
+        (services, fs)
     }
 
     fn default_excludes() -> ExcludeMatcher {
@@ -304,15 +311,21 @@ source = "https://example.com"
     #[test]
     fn deep_nested_asset_inherits_ancestor_record() {
         // Given a manifest at root and an asset nested several levels deep.
-        let fs = fs_with(&[
+        let (services, _fs) = services_with(&[
             ("/proj/_manifest.toml", &record_toml("LicenseRef-CcBy")),
             ("/proj/a/b/c/sword.glb", ""),
         ]);
         let excludes = default_excludes();
 
         // When descending the root with no inherited record.
-        let root_result =
-            descend(&fs, Path::new("/proj"), Path::new("/proj"), &excludes, None).unwrap();
+        let root_result = descend(
+            &services,
+            Path::new("/proj"),
+            Path::new("/proj"),
+            &excludes,
+            None,
+        )
+        .unwrap();
 
         // Then the effective record is established for descent.
         assert!(root_result.effective.is_some());
@@ -325,7 +338,7 @@ source = "https://example.com"
     #[test]
     fn child_manifest_fully_replaces_inherited() {
         // Given a parent manifest and a child manifest with a different license.
-        let fs = fs_with(&[
+        let (services, _fs) = services_with(&[
             ("/proj/sub/_manifest.toml", &record_toml("LicenseRef-Mit")),
             ("/proj/sub/sword.glb", ""),
         ]);
@@ -333,7 +346,7 @@ source = "https://example.com"
 
         // When descending the child with an inherited CC-BY record.
         let result = descend(
-            &fs,
+            &services,
             Path::new("/proj/sub"),
             Path::new("/proj"),
             &excludes,
@@ -350,7 +363,7 @@ source = "https://example.com"
     #[test]
     fn sidecar_overrides_inherited_manifest() {
         // Given an asset whose sidecar declares a different license than inherited.
-        let fs = fs_with(&[
+        let (services, _fs) = services_with(&[
             ("/proj/sword.glb", ""),
             ("/proj/sword.glb.attr.toml", &record_toml("LicenseRef-Mit")),
         ]);
@@ -358,7 +371,7 @@ source = "https://example.com"
 
         // When descending with an inherited CC-BY record.
         let result = descend(
-            &fs,
+            &services,
             Path::new("/proj"),
             Path::new("/proj"),
             &excludes,
@@ -375,7 +388,7 @@ source = "https://example.com"
     #[test]
     fn orphan_sidecar_detected_locally_when_asset_absent() {
         // Given a real asset+sidecar and a ghost sidecar with no asset.
-        let fs = fs_with(&[
+        let (services, _fs) = services_with(&[
             ("/proj/real.glb", ""),
             ("/proj/real.glb.attr.toml", ""),
             ("/proj/ghost.glb.attr.toml", ""),
@@ -383,7 +396,14 @@ source = "https://example.com"
         let excludes = default_excludes();
 
         // When descending.
-        let result = descend(&fs, Path::new("/proj"), Path::new("/proj"), &excludes, None).unwrap();
+        let result = descend(
+            &services,
+            Path::new("/proj"),
+            Path::new("/proj"),
+            &excludes,
+            None,
+        )
+        .unwrap();
 
         // Then only the ghost sidecar is reported as an orphan.
         assert_eq!(result.orphans.len(), 1);
@@ -393,11 +413,18 @@ source = "https://example.com"
     #[test]
     fn asset_with_no_cascade_is_uncovered() {
         // Given an asset with no sidecar and no inherited record.
-        let fs = fs_with(&[("/proj/sword.glb", "")]);
+        let (services, _fs) = services_with(&[("/proj/sword.glb", "")]);
         let excludes = default_excludes();
 
         // When descending with no inherited record.
-        let result = descend(&fs, Path::new("/proj"), Path::new("/proj"), &excludes, None).unwrap();
+        let result = descend(
+            &services,
+            Path::new("/proj"),
+            Path::new("/proj"),
+            &excludes,
+            None,
+        )
+        .unwrap();
 
         // Then the asset is uncovered.
         let resolved = &result.assets[0];
@@ -408,11 +435,17 @@ source = "https://example.com"
     #[test]
     fn malformed_manifest_returns_error() {
         // Given a directory whose manifest is malformed TOML.
-        let fs = fs_with(&[("/proj/_manifest.toml", "not = = valid toml")]);
+        let (services, _fs) = services_with(&[("/proj/_manifest.toml", "not = = valid toml")]);
         let excludes = default_excludes();
 
         // When descending.
-        let result = descend(&fs, Path::new("/proj"), Path::new("/proj"), &excludes, None);
+        let result = descend(
+            &services,
+            Path::new("/proj"),
+            Path::new("/proj"),
+            &excludes,
+            None,
+        );
 
         // Then descent returns an error (caller emits Verdict::Error, skips subtree).
         assert!(result.is_err());
@@ -429,12 +462,15 @@ source = "https://example.com"
             (Path::new("/proj/sub/deep/c.glb"), ""),
         ]));
         let excludes = default_excludes();
-        let service = FsService::new(fs.clone());
+        let services = Services::test()
+            .fs(FsService::new(fs.clone()))
+            .config_root(Path::new("/proj"), Config::default())
+            .build();
 
         // When descending the root, then its child, then the grandchild,
         // passing the effective record down at each level.
         let r0 = descend(
-            &service,
+            &services,
             Path::new("/proj"),
             Path::new("/proj"),
             &excludes,
@@ -442,7 +478,7 @@ source = "https://example.com"
         )
         .unwrap();
         let r1 = descend(
-            &service,
+            &services,
             &r0.subdirs[0],
             Path::new("/proj"),
             &excludes,
@@ -450,7 +486,7 @@ source = "https://example.com"
         )
         .unwrap();
         let r2 = descend(
-            &service,
+            &services,
             &r1.subdirs[0],
             Path::new("/proj"),
             &excludes,

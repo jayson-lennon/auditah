@@ -36,7 +36,11 @@ fn ack_creates_toml_with_id_when_absent() {
     let root = tree.path();
 
     // When acknowledging a single id.
-    let status = run(&ack_cmd(root, &["LicenseRef-StudioEULA"])).expect("ack");
+    let status = run(
+        &common::real_services(root),
+        &ack_cmd(root, &["LicenseRef-StudioEULA"]),
+    )
+    .expect("ack");
 
     // Then a new auditah.toml exists containing the id.
     assert_eq!(status, CommandStatus::Success);
@@ -58,7 +62,11 @@ fn ack_preserves_comments_on_existing_toml() {
     let root = tree.path();
 
     // When acknowledging an id.
-    run(&ack_cmd(root, &["LicenseRef-Foo"])).expect("ack");
+    run(
+        &common::real_services(root),
+        &ack_cmd(root, &["LicenseRef-Foo"]),
+    )
+    .expect("ack");
 
     // Then the user comment survives and the id is present.
     let content = std::fs::read_to_string(config_path(root)).expect("read");
@@ -76,7 +84,11 @@ fn ack_is_idempotent_when_id_already_present() {
     let root = tree.path();
 
     // When acknowledging the same id again.
-    run(&ack_cmd(root, &["LicenseRef-Foo"])).expect("ack");
+    run(
+        &common::real_services(root),
+        &ack_cmd(root, &["LicenseRef-Foo"]),
+    )
+    .expect("ack");
 
     // Then the id appears exactly once.
     let content = std::fs::read_to_string(config_path(root)).expect("read");
@@ -91,7 +103,11 @@ fn ack_adds_multiple_ids_in_one_invocation() {
     let root = tree.path();
 
     // When acknowledging two ids.
-    run(&ack_cmd(root, &["LicenseRef-A", "LicenseRef-B"])).expect("ack");
+    run(
+        &common::real_services(root),
+        &ack_cmd(root, &["LicenseRef-A", "LicenseRef-B"]),
+    )
+    .expect("ack");
 
     // Then both ids are in manual_review_acknowledged.
     let cfg = load_cfg(root);
@@ -115,7 +131,11 @@ fn ack_unknown_id_still_writes_and_succeeds() {
     let root = tree.path();
 
     // When acknowledging an id unknown to the registry and corpus.
-    let status = run(&ack_cmd(root, &["Totally-Made-Up-Id-XYZ"])).expect("ack");
+    let status = run(
+        &common::real_services(root),
+        &ack_cmd(root, &["Totally-Made-Up-Id-XYZ"]),
+    )
+    .expect("ack");
 
     // Then the id is written and the command succeeds.
     assert_eq!(status, CommandStatus::Success);
@@ -137,7 +157,11 @@ fn ack_preserves_other_fields_on_existing_toml() {
     let root = tree.path();
 
     // When acknowledging an id.
-    run(&ack_cmd(root, &["LicenseRef-Foo"])).expect("ack");
+    run(
+        &common::real_services(root),
+        &ack_cmd(root, &["LicenseRef-Foo"]),
+    )
+    .expect("ack");
 
     // Then the commercial flag and exclude globs are unchanged, and the id is added.
     let cfg = load_cfg(root);

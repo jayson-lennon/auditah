@@ -20,12 +20,17 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use error_stack::Report;
 use parking_lot::Mutex;
 
-use crate::services::clock::{ClockBackend, ClockError};
-use crate::services::fs::{DirEntry, FsBackend, FsError};
+use crate::config::Config;
+use crate::registry::{LicenseRegistry, LicenseRegistryService, LicenseSpec};
+use crate::services::clock::{ClockBackend, ClockError, ClockService};
+use crate::services::config::ConfigService;
+use crate::services::fs::{DirEntry, FsBackend, FsError, FsService};
+use crate::services::Services;
 
 /// Internal mutable state behind a single lock.
 #[derive(Debug, Default)]
@@ -356,6 +361,132 @@ impl ClockBackend for FakeClock {
     }
 }
 
+/// Fluent builder for a test [`Services`] container.
+///
+/// Defaults: a [`FakeFs`], [`FakeClock::fixed`] at the Unix epoch, an
+/// empty [`LicenseRegistry`], and a default [`Config`] rooted at `/proj`.
+/// Override any slot via the builder methods, then call [`build`](Self::build).
+///
+/// This is the canonical way to spin up a test `Services`; the production
+/// assembly lives only in `main`.
+#[doc(hidden)]
+#[derive(Debug, Clone, Default)]
+pub struct ServicesTestBuilder {
+    fs: Option<FsService>,
+    registry: Option<LicenseRegistryService>,
+    clock: Option<ClockService>,
+    config: Option<ConfigService>,
+}
+
+impl ServicesTestBuilder {
+    /// Load real backends from disk: `RealFs`, `LicenseRegistry` from
+    /// `LICENSES/*.toml`, `Config` from `auditah.toml` (default if absent),
+    /// and `RealClock`. Replaces the old `Services::real_services_test`.
+    ///
+    /// Use this in integration tests that exercise real disk I/O. Everything
+    /// is assembled inside `build()`, so no `Services { ... }` literal leaks
+    /// outside `main` and this builder.
+    ///
+    /// # Errors
+    /// Returns `AppError` if loading `LICENSES/*.toml` fails.
+    pub fn load_from_disk(root: &Path) -> Result<Self, Report<crate::AppError>> {
+        use crate::registry::LicenseRegistryService;
+        use crate::services::clock::RealClock;
+        use crate::services::fs::RealFs;
+        use error_stack::ResultExt;
+        let fs = FsService::new(Arc::new(RealFs::new()));
+        let registry = LicenseRegistryService::load(&fs, root)
+            .change_context(crate::AppError)
+            .attach("failed to load license registry")?;
+        let clock = ClockService::new(Arc::new(RealClock::new()));
+        let config = ConfigService::load(&fs, root)
+            .change_context(crate::AppError)
+            .attach("failed to load config")?;
+        Ok(Self {
+            fs: Some(fs),
+            registry: Some(registry),
+            clock: Some(clock),
+            config: Some(config),
+        })
+    }
+
+    /// Use this `FsService` (otherwise a default empty `FakeFs`).
+    #[must_use]
+    pub fn fs(mut self, fs: FsService) -> Self {
+        self.fs = Some(fs);
+        self
+    }
+
+    /// Use this `ClockService` (otherwise `FakeClock::fixed(0)`).
+    #[must_use]
+    pub fn clock(mut self, clock: ClockService) -> Self {
+        self.clock = Some(clock);
+        self
+    }
+
+    /// Use this `LicenseRegistryService` (otherwise an empty registry).
+    #[must_use]
+    pub fn registry(mut self, registry: LicenseRegistryService) -> Self {
+        self.registry = Some(registry);
+        self
+    }
+
+    /// Seed the registry from `specs` (otherwise an empty registry).
+    #[must_use]
+    pub fn registry_specs<I, S>(self, specs: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<LicenseSpec>,
+    {
+        let mut builder = LicenseRegistry::builder();
+        for spec in specs {
+            builder = builder.license(spec.into());
+        }
+        self.registry(LicenseRegistryService::new(Arc::new(builder.build())))
+    }
+
+    /// Use this `ConfigService` (otherwise default config at `/proj`).
+    #[must_use]
+    pub fn config(mut self, config: ConfigService) -> Self {
+        self.config = Some(config);
+        self
+    }
+
+    /// Set the config to `config` rooted at `root` (convenience over
+    /// `.config(ConfigService::new(...))`).
+    #[must_use]
+    pub fn config_root(self, root: impl AsRef<Path>, config: Config) -> Self {
+        self.config(ConfigService::new(
+            Arc::from(root.as_ref()),
+            Arc::new(config),
+        ))
+    }
+
+    /// Assemble the [`Services`] container, filling any unset slot with its
+    /// default.
+    #[must_use]
+    pub fn build(self) -> Services {
+        let fs = self
+            .fs
+            .unwrap_or_else(|| FsService::new(Arc::new(FakeFs::default())));
+        let registry = self
+            .registry
+            .unwrap_or_else(|| LicenseRegistryService::new(Arc::new(LicenseRegistry::empty())));
+        let clock = self
+            .clock
+            .unwrap_or_else(|| ClockService::new(Arc::new(FakeClock::fixed(0))));
+        let config = self.config.unwrap_or_else(|| {
+            ConfigService::new(Arc::from(Path::new("/proj")), Arc::new(Config::default()))
+        });
+        Services {
+            fs,
+            registry,
+            clock,
+            config,
+        }
+    }
+}
+
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
@@ -473,5 +604,36 @@ mod tests {
 
         // Then the nested directory exists.
         assert!(nested_exists);
+    }
+
+    #[test]
+    fn test_builder_seeds_registry_from_specs() {
+        // Given specs for two licenses.
+        // When building with them.
+        let services = Services::test()
+            .registry_specs([
+                LicenseSpec::new("LicenseRef-A"),
+                LicenseSpec::new("LicenseRef-B"),
+            ])
+            .build();
+
+        // Then both resolve and len matches.
+        assert!(services.registry.get("LicenseRef-A").is_some());
+        assert!(services.registry.get("LicenseRef-B").is_some());
+        assert_eq!(services.registry.len(), 2);
+    }
+
+    #[test]
+    fn test_builder_defaults_to_fake_fs_and_fake_clock() {
+        // Given a defaulted builder.
+        // When building.
+        let services = Services::test().build();
+
+        // Then fs is a FakeFs (write/read round-trip works).
+        let p = Path::new("/tmp/x");
+        services.fs.write(p, "hi").expect("write");
+        assert_eq!(services.fs.read_to_string(p).unwrap(), "hi");
+        // And clock is FakeClock::fixed(0) (now_epoch_secs == 0).
+        assert_eq!(services.clock.now_epoch_secs().unwrap(), 0);
     }
 }

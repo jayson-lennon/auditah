@@ -2,10 +2,7 @@
 //! Asserts on the generated BOM.md content (the public contract).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::Path;
-
-use auditah::bom::{generate_bom, BomCtx};
-use auditah::config::Config;
+use auditah::bom::generate_bom;
 use auditah::model::terms::{Derivatives, LicenseTerms};
 use auditah::registry::LicenseSpec;
 use auditah::services::Services;
@@ -39,21 +36,13 @@ fn share_alike_terms() -> LicenseTerms {
 /// Generate BOM to `<root>/BOM.md` and return the file contents.
 ///
 /// Seeds `LICENSES/<id>.txt` for each `ids` entry so the audit gate passes.
-fn generated(ctx: &BomCtx, ids: &[&str]) -> String {
+fn generated(svc: &Services, ids: &[&str]) -> String {
     if !ids.is_empty() {
-        common::seed_license_text(ctx.root, ids);
+        common::seed_license_text(svc.config.root(), ids);
     }
-    let out = ctx.root.join("BOM.md");
-    generate_bom(ctx, &out).expect("BOM generation should succeed");
+    let out = svc.config.root().join("BOM.md");
+    generate_bom(svc, &out).expect("BOM generation should succeed");
     std::fs::read_to_string(&out).expect("BOM.md should be readable")
-}
-
-fn ctx<'a>(svc: &'a Services, cfg: &'a Config, root: &'a Path) -> BomCtx<'a> {
-    BomCtx {
-        services: svc,
-        config: cfg,
-        root,
-    }
 }
 
 const SIDECAR_A: &str = r#"
@@ -96,17 +85,17 @@ fn permissive_and_cc0_both_appear_in_summary_with_counts() {
         "c.glb.attr.toml": SIDECAR_C_CC0,
     };
     let root = tree.path();
-    let svc = services_with([
-        LicenseSpec::new("LicenseRef-Mit").name("MIT"),
-        LicenseSpec::new("LicenseRef-Cc0").name("CC0"),
-    ]);
-    let cfg = config();
+    let svc = services_with(
+        root,
+        config(),
+        [
+            LicenseSpec::new("LicenseRef-Mit").name("MIT"),
+            LicenseSpec::new("LicenseRef-Cc0").name("CC0"),
+        ],
+    );
 
     // When generating the BOM.
-    let bom = generated(
-        &ctx(&svc, &cfg, root),
-        &["LicenseRef-Mit", "LicenseRef-Cc0"],
-    );
+    let bom = generated(&svc, &["LicenseRef-Mit", "LicenseRef-Cc0"]);
 
     // Then both licenses appear with correct asset counts, and CC0 is NOT omitted.
     assert!(
@@ -134,13 +123,16 @@ source = "https://g"
 "#,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-Gpl")
-        .name("GPL")
-        .terms(source_disclosure_terms())]);
-    let cfg = config();
+    let svc = services_with(
+        root,
+        config(),
+        [LicenseSpec::new("LicenseRef-Gpl")
+            .name("GPL")
+            .terms(source_disclosure_terms())],
+    );
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-Gpl"]);
+    let bom = generated(&svc, &["LicenseRef-Gpl"]);
 
     // Then the action-items section mentions source disclosure and the asset path.
     assert!(
@@ -164,13 +156,16 @@ source = "https://f"
 "#,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-CcBy")
-        .name("CC-BY")
-        .terms(notice_terms())]);
-    let cfg = config();
+    let svc = services_with(
+        root,
+        config(),
+        [LicenseSpec::new("LicenseRef-CcBy")
+            .name("CC-BY")
+            .terms(notice_terms())],
+    );
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-CcBy"]);
+    let bom = generated(&svc, &["LicenseRef-CcBy"]);
 
     // Then the action-items section references NOTICES.md.
     assert!(
@@ -194,13 +189,16 @@ source = "https://m"
 "#,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-CcBySa")
-        .name("CC-BY-SA")
-        .terms(share_alike_terms())]);
-    let cfg = config();
+    let svc = services_with(
+        root,
+        config(),
+        [LicenseSpec::new("LicenseRef-CcBySa")
+            .name("CC-BY-SA")
+            .terms(share_alike_terms())],
+    );
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-CcBySa"]);
+    let bom = generated(&svc, &["LicenseRef-CcBySa"]);
 
     assert!(
         bom.contains("must ship under"),
@@ -239,21 +237,21 @@ source = "https://b"
 "#,
     };
     let root = tree.path();
-    let svc = services_with([
-        LicenseSpec::new("LicenseRef-CcBySa")
-            .name("CC-BY-SA")
-            .terms(share_alike_terms()),
-        LicenseSpec::new("LicenseRef-Gpl")
-            .name("GPL")
-            .terms(share_alike_terms()),
-    ]);
-    let cfg = config();
+    let svc = services_with(
+        root,
+        config(),
+        [
+            LicenseSpec::new("LicenseRef-CcBySa")
+                .name("CC-BY-SA")
+                .terms(share_alike_terms()),
+            LicenseSpec::new("LicenseRef-Gpl")
+                .name("GPL")
+                .terms(share_alike_terms()),
+        ],
+    );
 
     // When generating the BOM.
-    let bom = generated(
-        &ctx(&svc, &cfg, root),
-        &["LicenseRef-CcBySa", "LicenseRef-Gpl"],
-    );
+    let bom = generated(&svc, &["LicenseRef-CcBySa", "LicenseRef-Gpl"]);
 
     // Then a conflict warning names both licenses.
     assert!(
@@ -277,11 +275,14 @@ fn all_permissive_project_has_summary_but_no_action_items() {
         "b.glb.attr.toml": SIDECAR_B,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-Mit").name("MIT")]);
-    let cfg = config();
+    let svc = services_with(
+        root,
+        config(),
+        [LicenseSpec::new("LicenseRef-Mit").name("MIT")],
+    );
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-Mit"]);
+    let bom = generated(&svc, &["LicenseRef-Mit"]);
 
     // Then the summary is present but action items note nothing outstanding.
     assert!(bom.contains("LicenseRef-Mit"), "summary missing:\n{bom}");
@@ -298,11 +299,10 @@ fn empty_project_writes_bom_with_no_licensed_assets() {
     let tree = temptree! {};
     // (no assets; registry has a license but nothing references it)
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-Mit")]);
-    let cfg = config();
+    let svc = services_with(root, config(), [LicenseSpec::new("LicenseRef-Mit")]);
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-Mit"]);
+    let bom = generated(&svc, &["LicenseRef-Mit"]);
 
     // Then the BOM notes no licensed assets were found.
     assert!(
@@ -320,13 +320,12 @@ fn custom_output_path_writes_to_specified_file() {
         "a.glb.attr.toml": SIDECAR_A,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-Mit")]);
-    let cfg = config();
+    let svc = services_with(root, config(), [LicenseSpec::new("LicenseRef-Mit")]);
     let custom = root.join("custom-bom.md");
 
     // When generating to a custom path (seed license text so audit gate passes).
     common::seed_license_text(root, &["LicenseRef-Mit"]);
-    generate_bom(&ctx(&svc, &cfg, root), &custom).expect("BOM generation should succeed");
+    generate_bom(&svc, &custom).expect("BOM generation should succeed");
 
     // Then the custom file exists and BOM.md does not.
     assert!(custom.exists(), "custom output not written");
@@ -359,11 +358,11 @@ source = "https://s"
 "#,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-Mit")]);
     let mut cfg = config();
     cfg.exclude = vec!["**/skip.glb".to_string()];
+    let svc = services_with(root, cfg, [LicenseSpec::new("LicenseRef-Mit")]);
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-Mit"]);
+    let bom = generated(&svc, &["LicenseRef-Mit"]);
 
     // Then only the kept asset appears (count = 1, not 2).
     assert!(
@@ -409,18 +408,21 @@ source = "https://g"
 "#,
     };
     let root = tree.path();
-    let svc = services_with([
-        LicenseSpec::new("LicenseRef-Mit").name("MIT"),
-        LicenseSpec::new("LicenseRef-CcBy")
-            .name("CC-BY")
-            .terms(notice_terms()),
-        LicenseSpec::new("LicenseRef-Gpl")
-            .name("GPL")
-            .terms(source_disclosure_terms()),
-    ]);
-    let cfg = config();
+    let svc = services_with(
+        root,
+        config(),
+        [
+            LicenseSpec::new("LicenseRef-Mit").name("MIT"),
+            LicenseSpec::new("LicenseRef-CcBy")
+                .name("CC-BY")
+                .terms(notice_terms()),
+            LicenseSpec::new("LicenseRef-Gpl")
+                .name("GPL")
+                .terms(source_disclosure_terms()),
+        ],
+    );
     generated(
-        &ctx(&svc, &cfg, root),
+        &svc,
         &["LicenseRef-Mit", "LicenseRef-CcBy", "LicenseRef-Gpl"],
     )
 }
@@ -501,13 +503,16 @@ modified = true
 "#,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-Mpl")
-        .name("MPL")
-        .terms(share_alike_terms())]);
-    let cfg = config();
+    let svc = services_with(
+        root,
+        config(),
+        [LicenseSpec::new("LicenseRef-Mpl")
+            .name("MPL")
+            .terms(share_alike_terms())],
+    );
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-Mpl"]);
+    let bom = generated(&svc, &["LicenseRef-Mpl"]);
 
     // Then the share-alike item lists the modified asset on its own indented line.
     assert!(
@@ -544,13 +549,16 @@ source = "https://a"
 "#,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-Gpl")
-        .name("GPL")
-        .terms(source_disclosure_terms())]);
-    let cfg = config();
+    let svc = services_with(
+        root,
+        config(),
+        [LicenseSpec::new("LicenseRef-Gpl")
+            .name("GPL")
+            .terms(source_disclosure_terms())],
+    );
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-Gpl"]);
+    let bom = generated(&svc, &["LicenseRef-Gpl"]);
 
     // Then the count header and each asset appear, each on its own indented line.
     assert!(
@@ -588,13 +596,16 @@ source = "https://m"
 "#,
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-CcBySa")
-        .name("CC-BY-SA")
-        .terms(share_alike_terms())]);
-    let cfg = config();
+    let svc = services_with(
+        root,
+        config(),
+        [LicenseSpec::new("LicenseRef-CcBySa")
+            .name("CC-BY-SA")
+            .terms(share_alike_terms())],
+    );
 
     // When generating the BOM.
-    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-CcBySa"]);
+    let bom = generated(&svc, &["LicenseRef-CcBySa"]);
 
     // Then the generic reminder is shown (no count header for modified assets).
     assert!(

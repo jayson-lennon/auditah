@@ -3,7 +3,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auditah::add::{render_record, write_manifest, write_sidecar};
-use auditah::audit::{run_audit, AuditCtx};
+use auditah::audit::run_audit;
 use auditah::model::attribution::AttributionRecord;
 use temptree::temptree;
 
@@ -18,16 +18,11 @@ fn add_sidecar_makes_asset_pass_audit() {
     let tree = temptree! { "sword.glb": "binary" };
     let root = tree.path();
     seed_license_text(root, &["LicenseRef-Asset"]);
-    let svc = services_with([LicenseSpec::new("LicenseRef-Asset")]);
+    let svc = services_with(root, cfg(), [LicenseSpec::new("LicenseRef-Asset")]);
     write_sidecar(&svc, &root.join("sword.glb"), &record("LicenseRef-Asset")).unwrap();
 
     // When running the audit.
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg(),
-        root,
-    };
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the sidecarred asset passes (no failures).
     assert!(
@@ -50,16 +45,11 @@ fn init_pack_manifest_covers_entire_directory() {
     };
     let root = tree.path();
     seed_license_text(root, &["LicenseRef-Asset"]);
-    let svc = services_with([LicenseSpec::new("LicenseRef-Asset")]);
+    let svc = services_with(root, cfg(), [LicenseSpec::new("LicenseRef-Asset")]);
     write_manifest(&svc, &root.join("pack"), &record("LicenseRef-Asset")).unwrap();
 
     // When running the audit.
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg(),
-        root,
-    };
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then every asset in the dir passes (manifest covers all).
     assert!(
@@ -81,16 +71,11 @@ fn init_pack_manifest_covers_subdirectories() {
     };
     let root = tree.path();
     seed_license_text(root, &["LicenseRef-Asset"]);
-    let svc = services_with([LicenseSpec::new("LicenseRef-Asset")]);
+    let svc = services_with(root, cfg(), [LicenseSpec::new("LicenseRef-Asset")]);
     write_manifest(&svc, &root.join("pack"), &record("LicenseRef-Asset")).unwrap();
 
     // When running the audit.
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg(),
-        root,
-    };
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the nested asset also passes (manifest applies to subtree).
     assert!(
@@ -111,22 +96,21 @@ fn add_sidecar_overrides_init_pack_manifest() {
     };
     let root = tree.path();
     seed_license_text(root, &["LicenseRef-Asset", "LicenseRef-Custom"]);
-    let svc = services_with([
-        LicenseSpec::new("LicenseRef-Asset"),
-        LicenseSpec::new("LicenseRef-Custom"),
-    ]);
+    let svc = services_with(
+        root,
+        cfg(),
+        [
+            LicenseSpec::new("LicenseRef-Asset"),
+            LicenseSpec::new("LicenseRef-Custom"),
+        ],
+    );
     write_manifest(&svc, &root.join("pack"), &record("LicenseRef-Asset")).unwrap();
     let mut special = record("LicenseRef-Custom");
     special.title = "Special".to_string();
     write_sidecar(&svc, &root.join("pack").join("special.glb"), &special).unwrap();
 
     // When running the audit.
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg(),
-        root,
-    };
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the sidecar wins and the asset passes.
     assert!(
@@ -159,7 +143,7 @@ fn init_pack_writes_underscore_manifest() {
     };
     let root = tree.path();
     seed_license_text(root, &["LicenseRef-Asset"]);
-    let svc = services_with([LicenseSpec::new("LicenseRef-Asset")]);
+    let svc = services_with(root, cfg(), [LicenseSpec::new("LicenseRef-Asset")]);
     let pack = root.join("pack");
 
     // When writing a manifest for the pack.

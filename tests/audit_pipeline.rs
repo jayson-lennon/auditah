@@ -3,11 +3,13 @@
 //! cases table.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::path::Path;
+
 use temptree::temptree;
 
 mod common;
 use auditah::audit::report::FindingCode;
-use auditah::audit::{run_audit, AuditCtx};
+use auditah::audit::run_audit;
 use auditah::config::Config;
 use auditah::model::terms::{Derivatives, LicenseTerms};
 use auditah::registry::LicenseSpec;
@@ -16,11 +18,15 @@ use common::{
     share_alike_terms,
 };
 
-fn ccby_services() -> auditah::services::Services {
-    services_with([LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
-        requires_attribution: true,
-        ..permissive_terms()
-    })])
+fn ccby_services(root: &Path, config: Config) -> auditah::services::Services {
+    services_with(
+        root,
+        config,
+        [LicenseSpec::new("LicenseRef-CcBy").terms(LicenseTerms {
+            requires_attribution: true,
+            ..permissive_terms()
+        })],
+    )
 }
 
 // Test case 1: uncovered asset → FAIL UnlicensedAsset.
@@ -29,16 +35,10 @@ fn uncovered_asset_fails_as_unlicensed() {
     // Given an uncovered asset with no sidecar or manifest.
     let tree = temptree! { "sword.glb": "binary" };
     let root = tree.path();
-    let svc = ccby_services();
-    let cfg = non_commercial_config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = ccby_services(root, non_commercial_config());
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the asset FAILs as UnlicensedAsset.
     assert!(report.has_failures());
@@ -59,16 +59,10 @@ fn orphan_sidecar_fails() {
         "real.glb.attr.toml": "title = \"R\"\nauthor = \"A\"\nyear = 2020\nlicense = \"LicenseRef-Cc0\"\nsource = \"https://x\"\n"
     };
     let root = tree.path();
-    let svc = ccby_services();
-    let cfg = non_commercial_config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = ccby_services(root, non_commercial_config());
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the orphan sidecar FAILs as OrphanSidecar.
     let codes = codes_for(&report, "ghost");
@@ -93,16 +87,10 @@ source = "https://example.com"
 "#
     };
     let root = tree.path();
-    let svc = ccby_services();
-    let cfg = non_commercial_config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = ccby_services(root, non_commercial_config());
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the asset FAILs as UnknownLicense.
     let codes = codes_for(&report, "rock.glb");
@@ -127,16 +115,10 @@ source = ""
 "#
     };
     let root = tree.path();
-    let svc = ccby_services();
-    let cfg = non_commercial_config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = ccby_services(root, non_commercial_config());
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the asset FAILs as IncompleteAttribution.
     let codes = codes_for(&report, "tile.glb");
@@ -164,21 +146,16 @@ allows_commercial_use = false
 "#
     };
     let root = tree.path();
-    let svc = ccby_services();
     let cfg = Config {
         commercial_project: true,
         redistributes_assets: false,
         manual_review_acknowledged: Vec::new(),
         exclude: Vec::new(),
     };
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = ccby_services(root, cfg);
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the asset FAILs as NotCommerciallyLicensed.
     let codes = codes_for(&report, "fanfare");
@@ -207,16 +184,10 @@ derivatives = "disallowed"
 "#
     };
     let root = tree.path();
-    let svc = ccby_services();
-    let cfg = non_commercial_config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = ccby_services(root, non_commercial_config());
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the asset FAILs as ModifiedUnderNoDerivatives.
     let codes = codes_for(&report, "statue");
@@ -246,16 +217,10 @@ derivatives = "share-alike"
     };
     let root = tree.path();
     seed_license_text(root, &["LicenseRef-CcBy"]);
-    let svc = ccby_services();
-    let cfg = non_commercial_config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = ccby_services(root, non_commercial_config());
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the asset is clean — share-alike produces no finding.
     let codes = codes_for(&report, "viral");
@@ -286,16 +251,10 @@ allows_commercial_use = false
     };
     let root = tree.path();
     seed_license_text(root, &["LicenseRef-CcBy"]);
-    let svc = ccby_services();
-    let cfg = non_commercial_config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = ccby_services(root, non_commercial_config());
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then no failure is raised (non-commercial asset is fine under a non-commercial project).
     let codes = codes_for(&report, "ok.glb");
@@ -316,21 +275,16 @@ fn excluded_glob_asset_not_audited() {
         }
     };
     let root = tree.path();
-    let svc = ccby_services();
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
         manual_review_acknowledged: Vec::new(),
         exclude: vec!["vendor/**".to_string()],
     };
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = ccby_services(root, cfg);
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the excluded asset does not appear in findings and there are no failures.
     assert!(
@@ -353,21 +307,16 @@ fn redistribution_violation_fails_when_project_redistributes() {
     };
     let root = tree.path();
     seed_license_text(root, &["LicenseRef-CcBy"]);
-    let svc = ccby_services();
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: true,
         manual_review_acknowledged: Vec::new(),
         exclude: Vec::new(),
     };
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = ccby_services(root, cfg);
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the asset FAILs as RedistributionViolation.
     let codes = codes_for(&report, "sword");
@@ -387,21 +336,16 @@ fn redistribution_gate_inactive_when_project_does_not_redistribute() {
     };
     let root = tree.path();
     seed_license_text(root, &["LicenseRef-CcBy"]);
-    let svc = ccby_services();
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
         manual_review_acknowledged: Vec::new(),
         exclude: Vec::new(),
     };
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
-        root,
-    };
+    let svc = ccby_services(root, cfg);
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then no redistribution finding fires (gate inactive) and audit is clean.
     assert!(
@@ -430,26 +374,25 @@ fn manual_review_fails_until_acknowledged() {
         },
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-EULA").terms(LicenseTerms {
-        requires_attribution: true,
-        allows_redistribution: false,
-        manual_review: true,
-        ..permissive_terms()
-    })]);
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
         manual_review_acknowledged: Vec::new(),
         exclude: Vec::new(),
     };
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
+    let svc = services_with(
         root,
-    };
+        cfg,
+        [LicenseSpec::new("LicenseRef-EULA").terms(LicenseTerms {
+            requires_attribution: true,
+            allows_redistribution: false,
+            manual_review: true,
+            ..permissive_terms()
+        })],
+    );
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the asset FAILs as ManualReviewRequired (not acknowledged).
     let codes = codes_for(&report, "fx");
@@ -471,26 +414,25 @@ fn manual_review_passes_when_acknowledged() {
         },
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-EULA").terms(LicenseTerms {
-        requires_attribution: true,
-        allows_redistribution: false,
-        manual_review: true,
-        ..permissive_terms()
-    })]);
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
         manual_review_acknowledged: vec!["LicenseRef-EULA".to_string()],
         exclude: Vec::new(),
     };
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
+    let svc = services_with(
         root,
-    };
+        cfg,
+        [LicenseSpec::new("LicenseRef-EULA").terms(LicenseTerms {
+            requires_attribution: true,
+            allows_redistribution: false,
+            manual_review: true,
+            ..permissive_terms()
+        })],
+    );
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then no manual-review finding fires and audit is clean.
     assert!(
@@ -526,17 +468,15 @@ source = "https://example.com"
     };
     let root = tree.path();
     seed_license_text(root, &["LicenseRef-Ofl"]);
-    let svc = services_with([LicenseSpec::new("LicenseRef-Ofl")
-        .terms(LicenseTerms::permissive().with_derivatives(Derivatives::ShareAlike))]);
-    let cfg = non_commercial_config();
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
+    let svc = services_with(
         root,
-    };
+        non_commercial_config(),
+        [LicenseSpec::new("LicenseRef-Ofl")
+            .terms(LicenseTerms::permissive().with_derivatives(Derivatives::ShareAlike))],
+    );
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the share-alike license produces no finding.
     let codes = codes_for(&report, "font");
@@ -571,24 +511,23 @@ source = "https://example.com"
         },
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-CcBySa").terms(LicenseTerms {
-        manual_review: true,
-        ..share_alike_terms()
-    })]);
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
         manual_review_acknowledged: vec!["LicenseRef-CcBySa".to_string()],
         exclude: Vec::new(),
     };
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
+    let svc = services_with(
         root,
-    };
+        cfg,
+        [LicenseSpec::new("LicenseRef-CcBySa").terms(LicenseTerms {
+            manual_review: true,
+            ..share_alike_terms()
+        })],
+    );
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the asset is clean — share-alike + source obligations produce no finding,
     // and manual_review is satisfied by the acknowledgement.
@@ -620,25 +559,24 @@ source = "https://example.com"
         },
     };
     let root = tree.path();
-    let svc = services_with([LicenseSpec::new("LicenseRef-Gpl").terms(LicenseTerms {
-        manual_review: true,
-        requires_source_disclosure: true,
-        ..share_alike_terms()
-    })]);
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
         manual_review_acknowledged: vec!["LicenseRef-Gpl".to_string()],
         exclude: Vec::new(),
     };
-    let ctx = AuditCtx {
-        services: &svc,
-        config: &cfg,
+    let svc = services_with(
         root,
-    };
+        cfg,
+        [LicenseSpec::new("LicenseRef-Gpl").terms(LicenseTerms {
+            manual_review: true,
+            requires_source_disclosure: true,
+            ..share_alike_terms()
+        })],
+    );
 
     // When running the audit.
-    let report = run_audit(&ctx).unwrap();
+    let report = run_audit(&svc).unwrap();
 
     // Then the asset is clean — source disclosure produces no finding,
     // and manual_review is satisfied by the acknowledgement.

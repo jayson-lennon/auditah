@@ -18,40 +18,45 @@ use auditah::audit::pipeline::run_pipeline;
 use auditah::audit::report::{FindingCode, Verdict};
 use auditah::config::Config;
 use auditah::discovery::enumerator::ExcludeMatcher;
-use auditah::registry::{LicenseRegistry, LicenseSpec};
+use auditah::registry::{LicenseRegistry, LicenseRegistryService, LicenseSpec};
+use auditah::services::config::ConfigService;
 use auditah::services::fs::FsService;
 use auditah::services::{ClockService, RealClock, Services};
 use auditah::test_support::FakeFs;
 use std::path::PathBuf;
 use temptree::temptree;
 
-/// Run the async pipeline against `root` with `--jobs N` and collect the
-/// verdicts in arrival order. Registry + config default to an empty permissive
-/// setup; callers seed the tree first.
-async fn run_async(root: &std::path::Path, registry: LicenseRegistry, jobs: usize) -> Vec<Verdict> {
-    let services = Arc::new(Services {
-        fs: common::real_fs(),
-        registry,
-        clock: ClockService::new(Arc::new(RealClock::new())),
-    });
-    let config = Arc::new(Config {
+/// Build a real-`FsService`-backed [`Services`] rooted at `root` with `registry`.
+fn services_with_registry(root: &std::path::Path, registry: LicenseRegistry) -> Arc<Services> {
+    let config = Config {
         commercial_project: false,
         redistributes_assets: false,
         manual_review_acknowledged: Vec::new(),
         exclude: Vec::new(),
-    });
-    let excludes = ExcludeMatcher::new(&auditah::discovery::all_excludes(&[])).unwrap();
-    let (progress_tx, _progress_rx) = tokio::sync::mpsc::channel::<()>(8);
-    run_pipeline(
-        services,
-        config,
-        root.to_path_buf(),
-        excludes,
-        jobs,
-        progress_tx,
+    };
+    Arc::new(
+        Services::test()
+            .fs(common::real_fs())
+            .registry(LicenseRegistryService::new(Arc::new(registry)))
+            .clock(ClockService::new(Arc::new(RealClock::new())))
+            .config(ConfigService::new(Arc::from(root), Arc::new(config)))
+            .build(),
     )
-    .await
-    .expect("pipeline should not fail to drive")
+}
+
+fn default_excludes() -> ExcludeMatcher {
+    ExcludeMatcher::new(&auditah::discovery::all_excludes(&[])).unwrap()
+}
+
+/// Run the async pipeline against `root` with `--jobs N` and collect the
+/// verdicts in arrival order. Registry + config default to an empty permissive
+/// setup; callers seed the tree first.
+async fn run_async(root: &std::path::Path, registry: LicenseRegistry, jobs: usize) -> Vec<Verdict> {
+    let services = services_with_registry(root, registry);
+    let (progress_tx, _progress_rx) = tokio::sync::mpsc::channel::<()>(8);
+    run_pipeline(services, default_excludes(), jobs, progress_tx)
+        .await
+        .expect("pipeline should not fail to drive")
 }
 
 /// Run the async pipeline while draining its progress channel. Returns the
@@ -62,24 +67,11 @@ async fn run_async_with_progress(
     registry: LicenseRegistry,
     jobs: usize,
 ) -> (Vec<Verdict>, usize) {
-    let services = Arc::new(Services {
-        fs: common::real_fs(),
-        registry,
-        clock: ClockService::new(Arc::new(RealClock::new())),
-    });
-    let config = Arc::new(Config {
-        commercial_project: false,
-        redistributes_assets: false,
-        manual_review_acknowledged: Vec::new(),
-        exclude: Vec::new(),
-    });
-    let excludes = ExcludeMatcher::new(&auditah::discovery::all_excludes(&[])).unwrap();
+    let services = services_with_registry(root, registry);
     let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel::<()>(64);
     let drive = tokio::spawn(run_pipeline(
         services,
-        config,
-        root.to_path_buf(),
-        excludes,
+        default_excludes(),
         jobs,
         progress_tx,
     ));
@@ -378,10 +370,10 @@ async fn child_subtree_failure_surfaces_as_error_not_lost() {
     // walk_dir returns Err. The contract under test is that *any* child
     // failure (returned Err or panic) surfaces as a Verdict::Error instead of
     // silently dropping the subtree — the same handle.await failure path.
+    use auditah::services::config::ConfigService;
     use auditah::services::fs::FsService;
-    use auditah::services::{ClockService, RealClock, Services};
     use auditah::test_support::FakeFs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     let fs = FsService::new(Arc::new(
         FakeFs::with_files([
@@ -390,31 +382,27 @@ async fn child_subtree_failure_surfaces_as_error_not_lost() {
         ])
         .fail_list_dir(Path::new("/proj/sub")),
     ));
-    let services = Arc::new(Services::from_parts(
-        fs,
-        LicenseRegistry::empty(),
-        ClockService::new(Arc::new(RealClock::new())),
-    ));
     let config = Arc::new(Config {
         commercial_project: false,
         redistributes_assets: false,
         manual_review_acknowledged: Vec::new(),
         exclude: Vec::new(),
     });
-    let excludes = ExcludeMatcher::new(&auditah::discovery::all_excludes(&[])).unwrap();
+    let services = Arc::new(
+        Services::test()
+            .fs(fs)
+            .registry(LicenseRegistryService::new(Arc::new(
+                LicenseRegistry::empty(),
+            )))
+            .config(ConfigService::new(Arc::from(Path::new("/proj")), config))
+            .build(),
+    );
     let (progress_tx, _progress_rx) = tokio::sync::mpsc::channel::<()>(8);
 
     // When running the pipeline.
-    let verdicts = run_pipeline(
-        services,
-        config,
-        PathBuf::from("/proj"),
-        excludes,
-        1,
-        progress_tx,
-    )
-    .await
-    .expect("pipeline should drive");
+    let verdicts = run_pipeline(services, default_excludes(), 1, progress_tx)
+        .await
+        .expect("pipeline should drive");
 
     // Then the failed subtree surfaces as an Error verdict (not lost), and the
     // sibling good.glb is still audited.
@@ -449,29 +437,28 @@ async fn progress_channel_emits_one_tick_per_asset() {
 /// This proves `--jobs` actually caps concurrent directory descents, not
 /// merely that the run avoids deadlock.
 async fn run_with_concurrency_probe(fs_backend: Arc<FakeFs>, jobs: usize) -> usize {
-    let services = Arc::new(Services {
-        fs: FsService::new(fs_backend.clone()),
-        registry: LicenseRegistry::empty(),
-        clock: ClockService::new(Arc::new(RealClock::new())),
-    });
     let config = Arc::new(Config {
         commercial_project: false,
         redistributes_assets: false,
         manual_review_acknowledged: Vec::new(),
         exclude: Vec::new(),
     });
-    let excludes = ExcludeMatcher::new(&auditah::discovery::all_excludes(&[])).unwrap();
+    let services = Arc::new(
+        Services::test()
+            .fs(FsService::new(fs_backend.clone()))
+            .registry(LicenseRegistryService::new(Arc::new(
+                LicenseRegistry::empty(),
+            )))
+            .config(ConfigService::new(
+                Arc::from(PathBuf::from("/proj")),
+                config,
+            ))
+            .build(),
+    );
     let (progress_tx, _progress_rx) = tokio::sync::mpsc::channel::<()>(64);
-    run_pipeline(
-        services,
-        config,
-        PathBuf::from("/proj"),
-        excludes,
-        jobs,
-        progress_tx,
-    )
-    .await
-    .expect("pipeline should drive to completion");
+    run_pipeline(services, default_excludes(), jobs, progress_tx)
+        .await
+        .expect("pipeline should drive to completion");
     fs_backend.list_dir_high_water()
 }
 

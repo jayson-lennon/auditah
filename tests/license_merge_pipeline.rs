@@ -8,6 +8,8 @@ use auditah::cli::license_cmd::{run, LicenseCmd};
 use auditah::cli::CommandStatus;
 use temptree::temptree;
 
+mod common;
+
 /// A `LicenseCmd` builder with the required `--id`/`--author` set; the target
 /// and root are the per-test variables.
 fn cmd(target: &Path, root: &Path, id: &str, author: &str) -> LicenseCmd {
@@ -40,8 +42,8 @@ fn license_file_target_writes_attr_sidecar() {
 
     // When running `license sword.glb --id LicenseRef-Asset --author A`.
     let status = run(
+        &common::real_services(root),
         &cmd(&root.join("sword.glb"), root, "LicenseRef-Asset", "A"),
-        root,
     )
     .expect("run");
 
@@ -70,8 +72,8 @@ fn license_dir_target_writes_manifest() {
 
     // When running `license pack --id LicenseRef-Asset --author A`.
     let status = run(
+        &common::real_services(root),
         &cmd(&root.join("pack"), root, "LicenseRef-Asset", "A"),
-        root,
     )
     .expect("run");
 
@@ -96,7 +98,7 @@ fn license_dir_target_rejects_modified_flag() {
     cmd.modified = true;
 
     // When running `license pack --modified`.
-    let result = run(&cmd, root);
+    let result = run(&common::real_services(root), &cmd);
 
     // Then it errors (a directory manifest cannot be "modified").
     assert!(
@@ -116,7 +118,11 @@ fn license_provisions_well_known_id_into_licenses_when_absent() {
     let root = tree.path();
 
     // When running `license sword.glb --id MIT --author A`.
-    let status = run(&cmd(&root.join("sword.glb"), root, "MIT", "A"), root).expect("run");
+    let status = run(
+        &common::real_services(root),
+        &cmd(&root.join("sword.glb"), root, "MIT", "A"),
+    )
+    .expect("run");
 
     // Then MIT is provisioned (text + grid) into LICENSES/.
     assert_eq!(status, CommandStatus::Success);
@@ -141,7 +147,10 @@ fn license_errors_on_unknown_id_absent_from_licenses() {
     let root = tree.path();
 
     // When running `license sword.glb --id StudioEULA --author A`.
-    let result = run(&cmd(&root.join("sword.glb"), root, "StudioEULA", "A"), root);
+    let result = run(
+        &common::real_services(root),
+        &cmd(&root.join("sword.glb"), root, "StudioEULA", "A"),
+    );
 
     // Then it errors and points the user at `add-license --custom`.
     let report = result.expect_err("unknown id must error");
@@ -171,13 +180,13 @@ fn license_root_override_locates_licenses_dir() {
 
     // When running `license isolated.glb --root project --id MIT --author A`.
     let status = run(
+        &common::real_services(&root.join("project")),
         &cmd(
             &root.join("isolated.glb"),
             &root.join("project"),
             "MIT",
             "A",
         ),
-        root,
     )
     .expect("run");
 
