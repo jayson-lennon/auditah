@@ -24,6 +24,7 @@ use std::path::{Path, PathBuf};
 use error_stack::Report;
 use parking_lot::Mutex;
 
+use crate::services::clock::{ClockBackend, ClockError};
 use crate::services::fs::{FsBackend, FsError};
 
 /// Internal mutable state behind a single lock.
@@ -184,6 +185,54 @@ impl FsBackend for FakeFs {
 
     fn name(&self) -> &'static str {
         "FakeFs"
+    }
+}
+
+/// In-memory `ClockBackend` for tests. Construct via [`FakeClock::fixed`] for a
+/// normal epoch-second instant, or [`FakeClock::broken`] to model a
+/// pre-epoch / unreadable clock that yields [`ClockError`].
+#[doc(hidden)]
+#[derive(Debug, Clone)]
+pub struct FakeClock {
+    state: ClockState,
+}
+
+#[derive(Debug, Clone)]
+enum ClockState {
+    /// Returns a fixed epoch-second value.
+    Fixed(u64),
+    /// Always errors (pre-epoch / unreadable clock).
+    Broken,
+}
+
+impl FakeClock {
+    /// A clock pinned to `epoch_secs`.
+    #[must_use]
+    pub fn fixed(epoch_secs: u64) -> Self {
+        Self {
+            state: ClockState::Fixed(epoch_secs),
+        }
+    }
+
+    /// A clock that always fails to read (models a pre-epoch clock).
+    #[must_use]
+    pub fn broken() -> Self {
+        Self {
+            state: ClockState::Broken,
+        }
+    }
+}
+
+impl ClockBackend for FakeClock {
+    fn now_epoch_secs(&self) -> Result<u64, Report<ClockError>> {
+        match self.state {
+            ClockState::Fixed(secs) => Ok(secs),
+            ClockState::Broken => Err(Report::new(ClockError)),
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "FakeClock"
     }
 }
 

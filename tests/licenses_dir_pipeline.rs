@@ -8,8 +8,9 @@
 use auditah::audit::report::{FindingCode, Severity};
 use auditah::audit::{run_audit, AuditCtx};
 use auditah::registry::{LicenseRegistry, LicenseSpec};
+use auditah::services::clock::RealClock;
 use auditah::services::fs::{FsService, RealFs};
-use auditah::services::Services;
+use auditah::services::{ClockService, Services};
 use std::sync::Arc;
 use temptree::temptree;
 
@@ -24,6 +25,7 @@ fn services_with_license(license_id: &str) -> Services {
     Services {
         fs: FsService::new(Arc::new(RealFs::new())),
         registry,
+        clock: ClockService::new(Arc::new(RealClock::new())),
     }
 }
 

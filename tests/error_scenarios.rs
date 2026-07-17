@@ -14,8 +14,9 @@ use auditah::cli::CommandStatus;
 use auditah::discovery::enumerator::ExcludeMatcher;
 use auditah::discovery::resolver::resolve;
 use auditah::registry::LicenseRegistry;
+use auditah::services::clock::RealClock;
 use auditah::services::fs::FsService;
-use auditah::services::Services;
+use auditah::services::{ClockService, Services};
 use auditah::test_support::FakeFs;
 use error_stack::Report;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,11 @@ use std::sync::Arc;
 use temptree::temptree;
 
 mod common;
+
+/// Real clock for tests that don't care about the year default.
+fn real_clock() -> ClockService {
+    ClockService::new(Arc::new(RealClock::new()))
+}
 
 // ---------------------------------------------------------------------------
 // LicenseRegistry::load — content errors
@@ -213,7 +219,7 @@ fn write_sidecar_errors_on_injected_write_failure() {
         FakeFs::default().fail_write(Path::new("/x.glb.attr.toml")),
     ));
     let registry = LicenseRegistry::empty();
-    let services = Services::from_parts(fs, registry);
+    let services = Services::from_parts(fs, registry, real_clock());
     let rec = common::record("LicenseRef-Asset");
 
     // When writing the sidecar.
@@ -235,7 +241,7 @@ fn generate_credits_errors_on_injected_write_failure() {
         FakeFs::default().fail_write(Path::new("/out/CREDITS.md")),
     ));
     let registry = LicenseRegistry::empty();
-    let services = Services::from_parts(fs, registry);
+    let services = Services::from_parts(fs, registry, real_clock());
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
@@ -271,7 +277,7 @@ fn write_sidecar_errors_when_target_is_under_a_file() {
     let root = tree.path();
     let fs = common::real_fs();
     let registry = LicenseRegistry::empty();
-    let services = Services::from_parts(fs, registry);
+    let services = Services::from_parts(fs, registry, real_clock());
     let rec = common::record("LicenseRef-Asset");
     // Writing to blocker/x.glb.attr.toml fails because `blocker` is a file.
     let target = root.join("blocker").join("x.glb");
@@ -294,7 +300,7 @@ fn run_audit_propagates_walk_failure() {
     use auditah::config::Config;
     let fs = FsService::new(Arc::new(FakeFs::default().fail_walk(Path::new("/proj"))));
     let registry = LicenseRegistry::empty();
-    let services = Services::from_parts(fs, registry);
+    let services = Services::from_parts(fs, registry, real_clock());
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
@@ -325,7 +331,7 @@ fn run_audit_propagates_build_excludes_error_without_panic() {
     use auditah::config::Config;
     let fs = FsService::new(Arc::new(FakeFs::default()));
     let registry = LicenseRegistry::empty();
-    let services = Services::from_parts(fs, registry);
+    let services = Services::from_parts(fs, registry, real_clock());
     let cfg = Config {
         commercial_project: false,
         redistributes_assets: false,
