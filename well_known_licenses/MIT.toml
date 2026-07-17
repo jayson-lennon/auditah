@@ -3,7 +3,7 @@ name = "MIT License"
 url = "https://spdx.org/licenses/MIT.html"
 
 [terms]
-requires_attribution = true
+requires_attribution = false
 requires_license_notice = true
 requires_source_disclosure = false
 derivatives = "allowed"

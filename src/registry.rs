@@ -475,4 +475,58 @@ mod tests {
         assert_eq!(entry.name, "overridden");
         assert_eq!(entry.terms.derivatives, Derivatives::Disallowed);
     }
+
+    // --- Attribution vs. notice: the family is correct ---
+    //
+    // MIT/ISC/BSD-2-Clause/BSD-3-Clause/Apache-2.0 require *notice preservation*, not
+    // CC-BY-style named attribution. They must have requires_attribution = false and
+    // requires_license_notice = true. CC-BY-4.0 genuinely requires named attribution.
+    // Guarding the corpus against the historical conflation of these two concepts.
+    use rstest::rstest;
+
+    fn load_corpus() -> LicenseRegistry {
+        let tmp = tmp_root();
+        LicenseRegistry::load(&fs(), tmp.path()).expect("load corpus")
+    }
+
+    // Same property: this license requires notice preservation, not named attribution.
+    #[rstest]
+    #[case::mit("MIT")]
+    #[case::isc("ISC")]
+    #[case::bsd_2("BSD-2-Clause")]
+    #[case::bsd_3("BSD-3-Clause")]
+    #[case::apache_2("Apache-2.0")]
+    fn notice_preservation_licenses_do_not_require_named_attribution(#[case] id: &str) {
+        // Given the embedded corpus.
+        let reg = load_corpus();
+
+        // When looking up the license entry.
+        let entry = reg.get(id).unwrap_or_else(|| panic!("{id} must be seeded"));
+
+        // Then attribution is NOT required (notice preservation only).
+        assert!(
+            !entry.terms.requires_attribution,
+            "{id} must not require named attribution"
+        );
+        // And notice preservation IS required (satisfied via NOTICES.md).
+        assert!(
+            entry.terms.requires_license_notice,
+            "{id} must require license notice"
+        );
+    }
+
+    #[test]
+    fn cc_by_4_requires_named_attribution() {
+        // Given the embedded corpus.
+        let reg = load_corpus();
+
+        // When looking up CC-BY-4.0.
+        let entry = reg.get("CC-BY-4.0").expect("CC-BY-4.0 must be seeded");
+
+        // Then it requires named attribution (title + author + source).
+        assert!(
+            entry.terms.requires_attribution,
+            "CC-BY-4.0 must require named attribution"
+        );
+    }
 }

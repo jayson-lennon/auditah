@@ -36,6 +36,35 @@ pub enum Derivatives {
 /// pair (see [`Derivatives`]). `manual_review` is a license-only escape hatch
 /// that fails the audit until the license id is acknowledged in the project
 /// config — it is intentionally not overridable per-asset.
+///
+/// # Attribution vs. license notice — do not conflate them
+///
+/// `requires_attribution` and `requires_license_notice` model two legally
+/// distinct conditions. Getting them backwards produces false audit failures or
+/// silently-waived obligations, so the distinction is load-bearing:
+///
+/// - **`requires_attribution`** (CC-BY sense): the downstream user *must credit
+///   the author by name and link the source*. The audit enforces this by `FAIL`ing
+///   with `IncompleteAttribution` unless the asset record carries non-empty
+///   `title` + `author` + `source`. CC-BY-* genuinely requires this. **MIT, BSD,
+///   ISC, Apache, CC0 do not** — they never compel *named* credit; what they
+///   compel is notice preservation, which is the *next* field.
+/// - **`requires_license_notice`** (notice preservation): the downstream user
+///   *must reproduce the copyright line + license text* in the distribution. This
+///   produces **no audit finding** — it is auto-satisfied by `NOTICES.md` via
+///   `generate`. MIT/BSD/ISC/Apache/CC-BY all require this; CC0/0BSD waive it.
+///
+/// Worked contrast: **MIT** sets `requires_attribution = false` +
+/// `requires_license_notice = true` — MIT's only condition is "the above
+/// copyright notice and this permission notice shall be included," which is
+/// notice preservation, not named attribution. **CC-BY-4.0** sets both `true`:
+/// it requires named credit *and* license-text reproduction.
+///
+/// Rule of thumb: if the license text says "you must give credit / attribute /
+/// provide a link to the licensor," that's `requires_attribution`. If it says
+/// "you must include/retain/reproduce this notice," that's
+/// `requires_license_notice`. They are independent — set each from the actual
+/// license text, never by analogy to a "similar" license.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 // `struct_excessive_bools` is a false positive here: a license is inherently a set
@@ -46,9 +75,22 @@ pub enum Derivatives {
 // the lint (one group still has 4 obligations).
 #[allow(clippy::struct_excessive_bools)]
 pub struct LicenseTerms {
-    /// You MUST attribute the author (requires `title` + `author` + `source`).
+    /// You MUST attribute the author in the CC-BY sense: credit by name + link
+    /// the source. Audit FAILs (`IncompleteAttribution`) unless the asset record
+    /// has non-empty `title` + `author` + `source`.
+    ///
+    /// True for CC-BY-*. **False for MIT/BSD/ISC/Apache/CC0** — those require
+    /// *notice preservation* (`requires_license_notice`), not named attribution.
+    /// Do not set this `true` just because a license requires a copyright/notice
+    /// line; that is `requires_license_notice`. See the struct-level doc.
     pub requires_attribution: bool,
-    /// You MUST reproduce the license text in your distribution.
+    /// You MUST reproduce the copyright + license text in your distribution.
+    ///
+    /// Produces **no audit finding** — auto-satisfied by `NOTICES.md` via
+    /// `generate`. True for MIT/BSD/ISC/Apache/CC-BY; false for CC0/0BSD.
+    /// Distinct from `requires_attribution`: this is about reproducing the
+    /// license *text*, not crediting the author *by name*. See the struct-level
+    /// doc.
     pub requires_license_notice: bool,
     /// You MUST offer corresponding source code on distribution. Tracked in the BOM; no audit finding.
     pub requires_source_disclosure: bool,
