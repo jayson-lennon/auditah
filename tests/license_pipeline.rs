@@ -195,12 +195,19 @@ manual_review = false
 use auditah::cli::license_cmd::{run, LicenseCmd};
 use auditah::cli::CommandStatus;
 
+/// add-license now discovers LICENSES/ (created by `init`) rather than
+/// creating it implicitly; tests that drive `run()` must pre-seed it so
+/// discovery resolves the project root.
+fn seed_licenses(root: &std::path::Path) {
+    std::fs::create_dir_all(root.join("LICENSES")).expect("mkdir LICENSES");
+}
 // `add-license MIT` (authored grid) extracts text + authored grid; silent.
 #[test]
 fn add_license_well_known_authored_extracts_text_and_grid() {
     // Given an empty project root.
     let tree = temptree! {};
     let root = tree.path().to_path_buf();
+    seed_licenses(&root);
     let cmd = LicenseCmd {
         name: "MIT".to_string(),
         custom: false,
@@ -208,7 +215,7 @@ fn add_license_well_known_authored_extracts_text_and_grid() {
     };
 
     // When running add-license MIT.
-    let status = run(&cmd).expect("run");
+    let status = run(&cmd, &root).expect("run");
 
     // Then it succeeds, and both the text and authored grid are written.
     assert_eq!(status, CommandStatus::Success);
@@ -228,6 +235,7 @@ fn add_license_well_known_case_insensitive_writes_canonical_casing() {
     // Given an empty project root.
     let tree = temptree! {};
     let root = tree.path().to_path_buf();
+    seed_licenses(&root);
     let cmd = LicenseCmd {
         name: "mit".to_string(),
         custom: false,
@@ -235,7 +243,7 @@ fn add_license_well_known_case_insensitive_writes_canonical_casing() {
     };
 
     // When running add-license mit (lowercase).
-    let status = run(&cmd).expect("run");
+    let status = run(&cmd, &root).expect("run");
 
     // Then the on-disk files use canonical casing (MIT, not mit).
     assert_eq!(status, CommandStatus::Success);
@@ -257,6 +265,7 @@ fn add_license_well_known_no_grid_writes_text_and_placeholder_grid() {
     // Given an empty project root.
     let tree = temptree! {};
     let root = tree.path().to_path_buf();
+    seed_licenses(&root);
     // Bzip2-1.0.6 is in the SPDX text corpus but has no authored grid.
     let cmd = LicenseCmd {
         name: "Bzip2-1.0.6".to_string(),
@@ -265,7 +274,7 @@ fn add_license_well_known_no_grid_writes_text_and_placeholder_grid() {
     };
 
     // When running add-license Bzip2-1.0.6.
-    let status = run(&cmd).expect("run");
+    let status = run(&cmd, &root).expect("run");
 
     // Then both files are written; the grid is the default_fail() placeholder.
     assert_eq!(status, CommandStatus::Success);
@@ -283,6 +292,7 @@ fn add_license_custom_writes_licenseref_default_fail_grid() {
     // Given an empty project root.
     let tree = temptree! {};
     let root = tree.path().to_path_buf();
+    seed_licenses(&root);
     let cmd = LicenseCmd {
         name: "Foo".to_string(),
         custom: true,
@@ -290,7 +300,7 @@ fn add_license_custom_writes_licenseref_default_fail_grid() {
     };
 
     // When running add-license --custom Foo.
-    let status = run(&cmd).expect("run");
+    let status = run(&cmd, &root).expect("run");
 
     // Then it writes LicenseRef-Foo.toml with default_fail() shape; no .txt.
     assert_eq!(status, CommandStatus::Success);
@@ -310,14 +320,15 @@ fn add_license_custom_on_known_spdx_id_errors() {
     // Given an empty project root.
     let tree = temptree! {};
     let root = tree.path().to_path_buf();
+    seed_licenses(&root);
     let cmd = LicenseCmd {
         name: "MIT".to_string(),
         custom: true,
-        root,
+        root: root.clone(),
     };
 
     // When running add-license --custom MIT.
-    let result = run(&cmd);
+    let result = run(&cmd, &root);
 
     // Then it errors (known id must use the non-custom path).
     assert!(result.is_err(), "--custom MIT must error");
@@ -329,14 +340,15 @@ fn add_license_unknown_spdx_id_without_custom_errors() {
     // Given an empty project root.
     let tree = temptree! {};
     let root = tree.path().to_path_buf();
+    seed_licenses(&root);
     let cmd = LicenseCmd {
         name: "NotReal".to_string(),
         custom: false,
-        root,
+        root: root.clone(),
     };
 
     // When running add-license NotReal.
-    let result = run(&cmd);
+    let result = run(&cmd, &root);
 
     // Then it errors (unknown SPDX id).
     assert!(result.is_err(), "unknown SPDX id must error");

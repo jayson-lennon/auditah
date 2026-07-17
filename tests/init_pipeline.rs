@@ -101,3 +101,42 @@ fn init_force_overwrites_existing_file() {
     assert!(content.contains("# auditah project config."));
     assert!(!content.contains("# stale"));
 }
+
+// Test case 5: `init` creates the LICENSES/ directory.
+#[test]
+fn init_creates_licenses_directory() {
+    // Given an empty project root.
+    let tree = temptree! {};
+    let root = tree.path();
+
+    // When running init.
+    let status = run(&init_cmd(root, false)).expect("init");
+
+    // Then the LICENSES/ directory exists.
+    assert_eq!(status, CommandStatus::Success);
+    assert!(root.join("LICENSES").is_dir());
+}
+
+// Test case 6: `init` leaves an existing LICENSES/ untouched (idempotent).
+#[test]
+fn init_leaves_existing_licenses_directory_untouched() {
+    // Given a root that already has a LICENSES/ with a seed file inside.
+    let tree = temptree! {};
+    let root = tree.path();
+    let licenses_dir = root.join("LICENSES");
+    std::fs::create_dir_all(&licenses_dir).expect("mkdir LICENSES");
+    let seed = root.join("LICENSES/KeepExisting.txt");
+    std::fs::write(&seed, "do not clobber\n").expect("write seed");
+    let original = std::fs::read_to_string(&seed).expect("read seed");
+
+    // When running init again.
+    let status = run(&init_cmd(root, true)).expect("init idempotent");
+
+    // Then the directory still exists and the seed file is unchanged.
+    assert_eq!(status, CommandStatus::Success);
+    assert!(root.join("LICENSES").is_dir());
+    assert_eq!(
+        std::fs::read_to_string(&seed).expect("read seed after"),
+        original
+    );
+}

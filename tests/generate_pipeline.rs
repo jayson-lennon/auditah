@@ -66,7 +66,7 @@ fn run_generate(
         output_notices: Some(out_notices.to_path_buf()),
         output_bom: Some(out_bom.to_path_buf()),
     };
-    run(&cmd)
+    run(&cmd, root)
 }
 
 fn defaults(root: &Path) -> (PathBuf, PathBuf, PathBuf) {
@@ -204,9 +204,10 @@ fn generate_custom_output_paths() {
 
 #[test]
 fn generate_on_empty_project_writes_all_three() {
-    // Given an empty project (no assets, no licenses).
+    // Given an empty project (no assets, no licenses) that has been initialized.
     let tree = temptree! {
         "auditah.toml": "",
+        "LICENSES": {}, // init creates LICENSES/; discovery requires it
     };
     let root = tree.path();
 

@@ -9,7 +9,7 @@
 //!   never lost in compliance-finding noise.
 
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -51,10 +51,13 @@ pub struct AuditCmd {
 /// # Errors
 ///
 /// Returns an error if the services, config, or audit pipeline fail.
-pub fn run(cmd: &AuditCmd) -> Result<CommandStatus, Report<AppError>> {
-    let root = &cmd.root;
-    let services = Services::real(root).change_context(AppError)?;
-    let config = Config::load(&services.fs, root)
+pub fn run(cmd: &AuditCmd, cwd: &Path) -> Result<CommandStatus, Report<AppError>> {
+    // Resolve the project root by walking up from --root for a LICENSES/ dir.
+    // The tool cannot function without one; discovery failure is a hard error
+    // pointing at `auditah init`.
+    let root = crate::project::resolve_or_error(cwd, &cmd.root)?;
+    let services = Services::real(&root).change_context(AppError)?;
+    let config = Config::load(&services.fs, &root)
         .change_context(AppError)
         .attach("failed to load config")?;
     let excludes = build_excludes(&config)

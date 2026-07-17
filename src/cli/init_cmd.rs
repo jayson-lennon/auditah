@@ -50,5 +50,18 @@ pub fn run(cmd: &InitCmd) -> Result<CommandStatus, Report<AppError>> {
         .change_context(AppError)
         .attach("failed to write auditah.toml")?;
     println!("init: wrote {}", path.display());
+
+    // LICENSES/ is the project's license home. `init` is the sole command
+    // that creates it; other commands discover it rather than create it.
+    // create_dir_all is idempotent, so re-running init on an existing
+    // project leaves an already-present LICENSES untouched.
+    let licenses_dir = cmd.root.join("LICENSES");
+    services
+        .fs
+        .create_dir_all(&licenses_dir)
+        .change_context(AppError)
+        .attach("failed to create LICENSES directory")?;
+    println!("init: ensured {} exists", licenses_dir.display());
+
     Ok(CommandStatus::Success)
 }

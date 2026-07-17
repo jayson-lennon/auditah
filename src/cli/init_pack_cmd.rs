@@ -1,7 +1,7 @@
 //! `auditah init-pack` — write a directory `_manifest.toml`, provisioning the
 //! referenced license into `LICENSES/` when it is well-known and absent.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::model::terms::Overrides;
 use crate::AppError;
@@ -11,7 +11,7 @@ use crate::add::write_manifest;
 use crate::discovery::resolver::MANIFEST_FILENAME;
 use crate::model::attribution::AttributionRecord;
 use crate::services::clock::ClockService;
-use crate::services::{FsService, Services};
+use crate::services::Services;
 use crate::well_known::{self, ResolveResult};
 use error_stack::{Report, ResultExt};
 
@@ -52,29 +52,20 @@ pub struct InitPackCmd {
 ///
 /// # Errors
 ///
-/// Returns an error if the cwd cannot be determined, no `LICENSES/` is found
-/// walking up from the cwd, the requested license is unknown/custom and not
-/// already present in `LICENSES/`, or the manifest/provisioning writes fail.
-pub fn run(cmd: &InitPackCmd) -> Result<CommandStatus, Report<AppError>> {
-    let cwd = std::env::current_dir().change_context(AppError)?;
-
-    // Discover the project's LICENSES/ by walking up from the cwd.
-    let licenses_dir = find_licenses_dir(&real_fs(), &cwd).ok_or_else(|| {
-        Report::new(AppError)
-            .attach("no LICENSES/ directory found walking up from the cwd")
-            .attach(cwd.display().to_string())
-            .attach("run from inside a project, or create LICENSES/ first")
-    })?;
-
-    // Services::real loads the registry from <root>/LICENSES, so pass the
-    // project root (the parent of LICENSES/), not the LICENSES/ dir itself.
-    let project_root = licenses_dir.parent().unwrap_or(Path::new("."));
-    let services = Services::real(project_root)
+/// Returns an error if no `LICENSES/` is found walking up from `cwd`, the
+/// requested license is unknown/custom and not already present in `LICENSES/`,
+/// or the manifest/provisioning writes fail.
+pub fn run(cmd: &InitPackCmd, cwd: &Path) -> Result<CommandStatus, Report<AppError>> {
+    // Discover the project root by walking up from the cwd for a LICENSES/ dir.
+    // Shared with audit/generate/add-license via crate::project.
+    let project_root = crate::project::resolve_or_error(cwd, cwd)?;
+    let licenses_dir = project_root.join("LICENSES");
+    let services = Services::real(&project_root)
         .change_context(AppError)
         .attach("failed to load services")?;
 
     provision_license(&services, &licenses_dir, &cmd.license)?;
-    write_manifest_record(cmd, &services, &cwd)?;
+    write_manifest_record(cmd, &services, cwd)?;
 
     println!("init-pack: wrote {}/{MANIFEST_FILENAME}", cwd.display());
     Ok(CommandStatus::Success)
@@ -145,32 +136,6 @@ fn write_manifest_record(
     write_manifest(services, cwd, &record).change_context(AppError)
 }
 
-/// Build a real-fs `FsService` just for discovery (before services exist).
-fn real_fs() -> FsService {
-    use crate::services::RealFs;
-    use std::sync::Arc;
-    FsService::new(Arc::new(RealFs::new()))
-}
-
-/// Walk up from `start` to the filesystem root, returning the first ancestor
-/// `LICENSES/` directory that exists, or `None` if none is found.
-///
-/// Unlike [`crate::discovery::resolver`]'s manifest walker, this has no upper
-/// bound: `init-pack` runs from the cwd and must find the project's `LICENSES/`
-/// wherever it lives up the tree. The loop ends naturally when `parent()`
-/// returns `None` at the filesystem root.
-fn find_licenses_dir(fs: &FsService, start: &Path) -> Option<PathBuf> {
-    let mut dir = Some(start);
-    while let Some(d) = dir {
-        let candidate = d.join("LICENSES");
-        if fs.exists(&candidate) {
-            return Some(candidate);
-        }
-        dir = d.parent();
-    }
-    None
-}
-
 /// Resolve the copyright year when `--year` is omitted: read the wall
 /// clock via `clock` and map epoch seconds to a calendar year. On a broken
 /// or pre-epoch clock, fall back to `2026`.
@@ -191,13 +156,9 @@ fn year_from_epoch_secs(secs: u64) -> u16 {
 mod tests {
     use super::*;
     use crate::add_license::{license_grid_path, license_text_path};
-    use crate::test_support::{FakeClock, FakeFs};
+    use crate::test_support::FakeClock;
     use std::sync::Arc;
     use temptree::temptree;
-
-    fn fake_fs() -> FsService {
-        FsService::new(Arc::new(FakeFs::default()))
-    }
 
     #[test]
     fn year_from_epoch_secs_maps_a_known_past_year() {
@@ -269,33 +230,6 @@ mod tests {
 
         // Then the year is the 2026 fallback rather than erroring or panicking.
         assert_eq!(year, 2026);
-    }
-
-    // --- find_licenses_dir discovery ---
-
-    #[test]
-    fn find_licenses_dir_resolves_ancestor() {
-        // Given a fs with LICENSES/ at /proj and a deeper start path.
-        let fs = fake_fs();
-        fs.write(Path::new("/proj/LICENSES/.keep"), "").unwrap();
-
-        // When walking up from a nested directory.
-        let found = find_licenses_dir(&fs, Path::new("/proj/sub/deep"));
-
-        // Then it returns the ancestor LICENSES/.
-        assert_eq!(found.as_deref(), Some(Path::new("/proj/LICENSES")));
-    }
-
-    #[test]
-    fn find_licenses_dir_returns_none_when_absent() {
-        // Given a fs with no LICENSES/ anywhere.
-        let fs = fake_fs();
-
-        // When walking up from an arbitrary path.
-        let found = find_licenses_dir(&fs, Path::new("/nowhere/sub"));
-
-        // Then nothing is found.
-        assert!(found.is_none());
     }
 
     // --- Provisioning matrix (provision_license) ---

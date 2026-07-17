@@ -31,6 +31,11 @@ use crate::services::fs::{DirEntry, FsBackend, FsError};
 #[derive(Debug, Default)]
 struct FsState {
     files: HashMap<PathBuf, String>,
+    /// Explicitly created directories (`create_dir_all`). Tracked separately
+    /// from `files` so an empty dir is observable as `exists` without
+    /// polluting `walk`/`list_dir` (which iterate `files` and treat every
+    /// key as a regular file).
+    dirs: HashSet<PathBuf>,
     fail_reads: HashSet<PathBuf>,
     fail_writes: HashSet<PathBuf>,
     fail_walks: HashSet<PathBuf>,
@@ -51,6 +56,7 @@ impl FsState {
     fn empty() -> Self {
         Self {
             files: HashMap::new(),
+            dirs: HashSet::new(),
             fail_reads: HashSet::new(),
             fail_writes: HashSet::new(),
             fail_walks: HashSet::new(),
@@ -207,6 +213,12 @@ impl FsBackend for FakeFs {
         Ok(())
     }
 
+    fn create_dir_all(&self, path: &Path) -> Result<(), Report<FsError>> {
+        let mut state = self.state.lock();
+        state.dirs.insert(path.to_path_buf());
+        Ok(())
+    }
+
     fn list_dir(&self, path: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
         let delay = self.enter_list_dir();
         // Delay OUTSIDE the lock so concurrent calls overlap.
@@ -284,9 +296,11 @@ impl FsBackend for FakeFs {
 
     fn exists(&self, path: &Path) -> bool {
         let state = self.state.lock();
-        // A path exists if it's a seeded file, or if any seeded file lives
-        // beneath it (implicit directory).
-        state.files.contains_key(path) || state.files.keys().any(|k| k.starts_with(path))
+        // A path exists if it's a seeded file, an explicitly created dir,
+        // or if any seeded file lives beneath it (implicit directory).
+        state.files.contains_key(path)
+            || state.dirs.contains(path)
+            || state.files.keys().any(|k| k.starts_with(path))
     }
 
     fn name(&self) -> &'static str {

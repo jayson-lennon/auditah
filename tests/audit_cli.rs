@@ -40,6 +40,13 @@ fn seed_license(root: &Path, id: &str) {
     common::seed_license(root, id);
 }
 
+/// Create an empty `LICENSES/` dir so discovery resolves the project root.
+/// `init` is the sole creator of LICENSES/; tests that drive the audit CLI
+/// must pre-seed it before the command can proceed to its real assertions.
+fn seed_licenses_dir(root: &Path) {
+    std::fs::create_dir_all(root.join("LICENSES")).expect("mkdir LICENSES");
+}
+
 // ---------------------------------------------------------------------------
 // Case 9: ACCEPTED paths shown only under --verbose
 // ---------------------------------------------------------------------------
@@ -123,6 +130,7 @@ fn compliance_failure_exits_one() {
     let tree = temptree! {
         "orphan.glb": "binary",
     };
+    seed_licenses_dir(tree.path());
 
     // When auditing.
     // Then the process exits 1 (ComplianceFailure), not 0 or 2.
@@ -141,6 +149,7 @@ fn technical_error_exits_two() {
         "_manifest.toml": "this is not = valid toml {{{",
         "asset.glb": "binary",
     };
+    seed_licenses_dir(tree.path());
 
     // When auditing.
     // Then the process exits 2 (Error), which is more severe than a
@@ -163,6 +172,7 @@ fn errors_go_to_stderr_after_summary_on_stdout() {
             "inner.glb": "binary",
         },
     };
+    seed_licenses_dir(tree.path());
 
     // When auditing.
     let output = audit(tree.path()).output().expect("run");

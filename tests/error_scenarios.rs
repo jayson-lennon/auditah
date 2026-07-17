@@ -10,6 +10,8 @@
 
 use auditah::cli::audit_cmd::{run as audit_run, AuditCmd};
 use auditah::cli::command_to_exit_code;
+use auditah::cli::generate_cmd::{run as generate_run, GenerateCmd};
+use auditah::cli::license_cmd::{run as license_run, LicenseCmd};
 use auditah::cli::CommandStatus;
 use auditah::discovery::enumerator::ExcludeMatcher;
 use auditah::discovery::resolver::resolve;
@@ -381,7 +383,7 @@ source = "https://example.com"
     };
 
     // When running the audit command.
-    let result = audit_run(&cmd);
+    let result = audit_run(&cmd, root);
 
     // Then it returns Ok(Success) (clean project).
     let status = result.expect("clean audit should be Ok");
@@ -396,6 +398,8 @@ fn audit_cmd_violations_returns_ok_compliance_failure() {
         "sword.glb": "binary",
     };
     let root = tree.path();
+    // init creates LICENSES/; discovery requires it to resolve the project root.
+    std::fs::create_dir_all(root.join("LICENSES")).expect("mkdir LICENSES");
     // No license seeded on purpose — an uncovered asset fails regardless.
     let cmd = AuditCmd {
         root: root.to_path_buf(),
@@ -403,7 +407,7 @@ fn audit_cmd_violations_returns_ok_compliance_failure() {
     };
 
     // When running the audit command.
-    let result = audit_run(&cmd);
+    let result = audit_run(&cmd, root);
 
     // Then it returns Ok(ComplianceFailure) (violations found, exit 1).
     let status = result.expect("audit with violations should be Ok");
@@ -447,7 +451,7 @@ fn audit_cmd_missing_root_returns_err_exit_two() {
     };
 
     // When running the audit command.
-    let result = audit_run(&cmd);
+    let result = audit_run(&cmd, std::path::Path::new("."));
 
     // Then it returns Err (technical failure, exit 2).
     assert!(result.is_err(), "missing root must be a technical failure");
@@ -468,4 +472,97 @@ fn command_to_exit_code_maps_outcome_to_code(
 
     // Then the outcome maps to the expected process exit code.
     assert_eq!(code, expected);
+}
+
+// audit hard-errors when no ancestor LICENSES/ exists (no fallback to --root).
+#[test]
+fn audit_cmd_no_licenses_dir_returns_err() {
+    // Given a project root with no LICENSES/ directory anywhere up the tree.
+    let tree = temptree! {
+        "sword.glb": "binary",
+    };
+    let root = tree.path();
+    let cmd = AuditCmd {
+        root: root.to_path_buf(),
+        ..Default::default()
+    };
+
+    // When running the audit command.
+    let result = audit_run(&cmd, root);
+
+    // Then it returns Err (discovery failure points the user at `auditah init`).
+    assert!(
+        result.is_err(),
+        "audit must hard-error when no ancestor LICENSES/ exists"
+    );
+    let report = result.expect_err("err");
+    let rendered = format!("{report:?}");
+    assert!(
+        rendered.contains("auditah init"),
+        "error must mention `auditah init`, got: {rendered}"
+    );
+}
+
+// generate hard-errors when no ancestor LICENSES/ exists.
+#[test]
+fn generate_cmd_no_licenses_dir_returns_err() {
+    // Given a project root with no LICENSES/ directory anywhere up the tree.
+    let tree = temptree! {
+        "sword.glb": "binary",
+    };
+    let root = tree.path();
+    let cmd = GenerateCmd {
+        root: root.to_path_buf(),
+        output_credits: None,
+        output_notices: None,
+        output_bom: None,
+    };
+
+    // When running the generate command.
+    let result = generate_run(&cmd, root);
+
+    // Then it returns Err pointing the user at `auditah init`.
+    assert!(
+        result.is_err(),
+        "generate must hard-error when no ancestor LICENSES/ exists"
+    );
+    let rendered = format!("{:?}", result.expect_err("err"));
+    assert!(
+        rendered.contains("auditah init"),
+        "error must mention `auditah init`, got: {rendered}"
+    );
+}
+
+// add-license hard-errors when no LICENSES/ exists, and does not create one.
+#[test]
+fn license_cmd_no_licenses_dir_returns_err_and_does_not_create_licenses() {
+    // Given a project root with no LICENSES/ directory anywhere up the tree.
+    let tree = temptree! {
+        "sword.glb": "binary",
+    };
+    let root = tree.path();
+    let cmd = LicenseCmd {
+        name: "MIT".to_string(),
+        custom: false,
+        root: root.to_path_buf(),
+    };
+
+    // When running add-license.
+    let result = license_run(&cmd, root);
+
+    // Then it returns Err pointing the user at `auditah init`.
+    assert!(
+        result.is_err(),
+        "add-license must hard-error when no LICENSES/ exists"
+    );
+    let rendered = format!("{:?}", result.expect_err("err"));
+    assert!(
+        rendered.contains("auditah init"),
+        "error must mention `auditah init`, got: {rendered}"
+    );
+    // And it must NOT have created LICENSES/ (only `init` creates it).
+    assert!(
+        !root.join("LICENSES").exists(),
+        "add-license must not bootstrap a LICENSES/ directory"
+    );
 }

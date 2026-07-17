@@ -12,6 +12,7 @@ use clap::{Parser, Subcommand};
 use error_stack::Report;
 
 use auditah::AppError;
+use std::path::Path;
 
 /// Top-level CLI.
 #[derive(Debug, Parser)]
@@ -40,21 +41,35 @@ enum Command {
 }
 
 /// Dispatch a parsed command to its handler and return its `CommandStatus`.
-fn dispatch(command: Command) -> Result<CommandStatus, Report<AppError>> {
+/// Dispatch a parsed command to its handler and return its `CommandStatus`.
+///
+/// `cwd` is the process working directory captured once at program start; it is
+/// threaded into the LICENSES-dependent commands so they never read the
+/// environment themselves (relative `--root` values resolve against `cwd`).
+fn dispatch(command: Command, cwd: &Path) -> Result<CommandStatus, Report<AppError>> {
     match command {
-        Command::Audit(cmd) => auditah::cli::audit_cmd::run(&cmd),
+        Command::Audit(cmd) => auditah::cli::audit_cmd::run(&cmd, cwd),
         Command::Sidecar(cmd) => auditah::cli::sidecar_cmd::run(&cmd),
-        Command::License(cmd) => auditah::cli::license_cmd::run(&cmd),
+        Command::License(cmd) => auditah::cli::license_cmd::run(&cmd, cwd),
         Command::Init(cmd) => auditah::cli::init_cmd::run(&cmd),
         Command::Ack(cmd) => auditah::cli::ack_cmd::run(&cmd),
-        Command::InitPack(cmd) => auditah::cli::init_pack_cmd::run(&cmd),
-        Command::Generate(cmd) => auditah::cli::generate_cmd::run(&cmd),
+        Command::InitPack(cmd) => auditah::cli::init_pack_cmd::run(&cmd, cwd),
+        Command::Generate(cmd) => auditah::cli::generate_cmd::run(&cmd, cwd),
     }
 }
 
 fn main() {
     let cli = Cli::parse();
-    let result = dispatch(cli.command);
+    // Capture the process cwd once at program start; commands receive it as
+    // an injected parameter rather than reading the environment themselves.
+    let cwd = match std::env::current_dir() {
+        Ok(cwd) => cwd,
+        Err(e) => {
+            eprintln!("failed to read process cwd at startup: {e}");
+            std::process::exit(2);
+        }
+    };
+    let result = dispatch(cli.command, &cwd);
     let exit_code = command_to_exit_code(&result);
     if let Err(report) = &result {
         eprintln!("{report:?}");

@@ -60,6 +60,13 @@ pub trait FsBackend: Send + Sync {
     /// Returns [`FsError`] if the write fails.
     fn write(&self, path: &Path, content: &str) -> Result<(), Report<FsError>>;
 
+    /// Create the directory at `path`, including parents. Idempotent: a no-op
+    /// when the directory already exists.
+    ///
+    /// # Errors
+    /// Returns [`FsError`] if the directory cannot be created.
+    fn create_dir_all(&self, path: &Path) -> Result<(), Report<FsError>>;
+
     /// List immediate children (files + dirs) of `path`, untyped.
     ///
     /// # Errors
@@ -123,6 +130,17 @@ impl FsService {
             .write(path, content)
             .attach(path.display().to_string())
             .attach("failed to write file")
+    }
+
+    /// Create a directory (and parents). See [`FsBackend::create_dir_all`].
+    ///
+    /// # Errors
+    /// Propagates [`FsError`] from the backend, with the path attached as context.
+    pub fn create_dir_all(&self, path: &Path) -> Result<(), Report<FsError>> {
+        self.backend
+            .create_dir_all(path)
+            .attach(path.display().to_string())
+            .attach("failed to create directory")
     }
 
     /// List a directory. See [`FsBackend::list_dir`].
@@ -192,6 +210,12 @@ impl FsBackend for RealFs {
                 .attach(parent.display().to_string())?;
         }
         std::fs::write(path, content)
+            .change_context(FsError)
+            .attach(path.display().to_string())
+    }
+
+    fn create_dir_all(&self, path: &Path) -> Result<(), Report<FsError>> {
+        std::fs::create_dir_all(path)
             .change_context(FsError)
             .attach(path.display().to_string())
     }
@@ -288,5 +312,36 @@ mod tests {
             got,
             vec![PathBuf::from("root/a.glb"), PathBuf::from("root/sub/b.glb"),]
         );
+    }
+
+    // --- create_dir_all ---
+
+    #[test]
+    fn create_dir_all_creates_directory_on_real_fs() {
+        // Given a real filesystem and a temp dir.
+        let fs = RealFs::new();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join("nested/LICENSES");
+
+        // When creating the directory.
+        fs.create_dir_all(&dir).expect("create_dir_all");
+
+        // Then the directory exists on the real filesystem.
+        assert!(dir.is_dir(), "{dir:?} should be a directory");
+    }
+
+    #[test]
+    fn create_dir_all_makes_empty_dir_observable_as_exists_on_fake_fs() {
+        // Given a fake filesystem with no files under LICENSES.
+        let fs = FakeFs::default();
+
+        // When explicitly creating the LICENSES directory.
+        fs.create_dir_all(Path::new("/proj/LICENSES"))
+            .expect("create_dir_all");
+
+        // Then the empty dir is observable via exists(), and walk("/proj")
+        // does NOT return the dir as if it were a file.
+        assert!(fs.exists(Path::new("/proj/LICENSES")));
+        assert!(fs.walk(Path::new("/proj")).expect("walk").is_empty());
     }
 }

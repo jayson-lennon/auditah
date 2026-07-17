@@ -2,3 +2,6 @@
 spdx-licenses.zip
 /build
 .plans/
+
+# Self-hosted config generated locally; not committed.
+/auditah.toml

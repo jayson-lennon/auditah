@@ -4,7 +4,7 @@
 //! the three internal generators: CREDITS.md (attribution), NOTICES.md
 //! (license text reproduction), and BOM.md (compliance obligations).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::AppError;
 use clap::Args;
@@ -45,9 +45,11 @@ pub struct GenerateCmd {
 ///
 /// Returns an error if services, config load, audit-gate, or any generator
 /// fails.
-pub fn run(cmd: &GenerateCmd) -> Result<CommandStatus, Report<AppError>> {
-    let root = &cmd.root;
-    let services = Services::real(root).change_context(AppError)?;
+pub fn run(cmd: &GenerateCmd, cwd: &Path) -> Result<CommandStatus, Report<AppError>> {
+    let root = crate::project::resolve_or_error(cwd, &cmd.root)?;
+    let services = Services::real(&root).change_context(AppError)?;
+    // Reborrow as &Path for the ctx structs; the owned PathBuf stays alive above.
+    let root = root.as_path();
     let config = Config::load(&services.fs, root)
         .change_context(AppError)
         .attach("failed to load config")?;
