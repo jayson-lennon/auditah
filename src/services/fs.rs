@@ -92,6 +92,17 @@ pub trait FsBackend: Send + Sync {
     /// Whether `path` exists on the backing filesystem.
     fn exists(&self, path: &Path) -> bool;
 
+    /// Copy a file from `src` to `dst`, binary-safe.
+    ///
+    /// Unlike [`read_to_string`](Self::read_to_string) + [`write`](Self::write),
+    /// this preserves exact bytes (no UTF-8 round-trip) so binary assets
+    /// (`.glb`, `.png`, `.wav`) move faithfully. Creates `dst`'s parent
+    /// directories as needed.
+    ///
+    /// # Errors
+    /// Returns [`FsError`] if `src` cannot be read or `dst` cannot be written.
+    fn copy_file(&self, src: &Path, dst: &Path) -> Result<(), Report<FsError>>;
+
     /// Backend name for debugging.
     fn name(&self) -> &'static str;
 }
@@ -180,6 +191,18 @@ impl FsService {
     #[must_use]
     pub fn exists(&self, path: &Path) -> bool {
         self.backend.exists(path)
+    }
+
+    /// Copy `src` to `dst`, binary-safe. See [`FsBackend::copy_file`].
+    ///
+    /// # Errors
+    /// Propagates [`FsError`] from the backend, with both paths attached as context.
+    pub fn copy_file(&self, src: &Path, dst: &Path) -> Result<(), Report<FsError>> {
+        self.backend
+            .copy_file(src, dst)
+            .attach(src.display().to_string())
+            .attach(dst.display().to_string())
+            .attach("failed to copy file")
     }
 }
 
@@ -271,6 +294,19 @@ impl FsBackend for RealFs {
         path.exists()
     }
 
+    fn copy_file(&self, src: &Path, dst: &Path) -> Result<(), Report<FsError>> {
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent)
+                .change_context(FsError)
+                .attach(parent.display().to_string())?;
+        }
+        std::fs::copy(src, dst)
+            .change_context(FsError)
+            .attach(src.display().to_string())
+            .attach(dst.display().to_string())
+            .map(|_| ())
+    }
+
     fn name(&self) -> &'static str {
         "RealFs"
     }
@@ -343,5 +379,24 @@ mod tests {
         // does NOT return the dir as if it were a file.
         assert!(fs.exists(Path::new("/proj/LICENSES")));
         assert!(fs.walk(Path::new("/proj")).expect("walk").is_empty());
+    }
+
+    // --- copy_file ---
+
+    #[test]
+    fn copy_file_preserves_binary_bytes_on_real_fs() {
+        // Given a real filesystem with a binary asset (non-UTF-8 bytes).
+        let fs = RealFs::new();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let bytes: &[u8] = &[0x00, 0xFF, 0xFE, 0x89, 0x50, 0x4E, 0x47];
+        let src = tmp.path().join("asset.glb");
+        std::fs::write(&src, bytes).expect("write src");
+        let dst = tmp.path().join("nested/out/asset.glb");
+
+        // When copying the asset to a nested destination.
+        fs.copy_file(&src, &dst).expect("copy");
+
+        // Then the destination is byte-identical to the source.
+        assert_eq!(std::fs::read(&dst).expect("read dst"), bytes);
     }
 }

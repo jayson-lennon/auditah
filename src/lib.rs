@@ -12,6 +12,7 @@ pub mod cli;
 pub mod config;
 pub mod credits;
 pub mod discovery;
+pub mod export;
 pub mod license_def;
 pub mod model;
 pub mod notices;

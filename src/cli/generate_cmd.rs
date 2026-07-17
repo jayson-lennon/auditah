@@ -4,7 +4,7 @@
 //! the three internal generators: CREDITS.md (attribution), NOTICES.md
 //! (license text reproduction), and BOM.md (compliance obligations).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::audit::run_audit;
 use crate::bom::{default_output_path as bom_default, generate_bom};
@@ -35,6 +35,22 @@ pub struct GenerateCmd {
     /// Output file for BOM.md (defaults to `<root>/BOM.md`).
     #[arg(long)]
     pub output_bom: Option<PathBuf>,
+}
+
+impl GenerateCmd {
+    /// Anchor relative `--output-*` paths against `cwd` in place. `--root` is
+    /// handled separately by the dispatch layer's root resolution.
+    pub fn anchor_paths(&mut self, cwd: &Path) {
+        if let Some(p) = &self.output_credits {
+            self.output_credits = Some(crate::project::anchor(cwd, p));
+        }
+        if let Some(p) = &self.output_notices {
+            self.output_notices = Some(crate::project::anchor(cwd, p));
+        }
+        if let Some(p) = &self.output_bom {
+            self.output_bom = Some(crate::project::anchor(cwd, p));
+        }
+    }
 }
 
 /// Run the generate command.
@@ -90,4 +106,57 @@ pub fn run(services: &Services, cmd: &GenerateCmd) -> Result<CommandStatus, Repo
     println!("generate: wrote {}", output_notices.display());
     println!("generate: wrote {}", output_bom.display());
     Ok(CommandStatus::Success)
+}
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn anchor_paths_joins_relative_output_paths_against_cwd() {
+        // Given a generate command with relative --output-* paths.
+        let mut cmd = GenerateCmd {
+            root: PathBuf::from("."),
+            output_credits: Some(PathBuf::from("out/CREDITS.md")),
+            output_notices: Some(PathBuf::from("out/NOTICES.md")),
+            output_bom: Some(PathBuf::from("out/BOM.md")),
+        };
+
+        // When anchoring against a cwd.
+        cmd.anchor_paths(Path::new("/work"));
+
+        // Then each output path is joined against cwd.
+        assert_eq!(
+            cmd.output_credits.as_deref(),
+            Some(Path::new("/work/out/CREDITS.md"))
+        );
+        assert_eq!(
+            cmd.output_notices.as_deref(),
+            Some(Path::new("/work/out/NOTICES.md"))
+        );
+        assert_eq!(
+            cmd.output_bom.as_deref(),
+            Some(Path::new("/work/out/BOM.md"))
+        );
+    }
+
+    #[test]
+    fn anchor_paths_leaves_none_outputs_untouched() {
+        // Given a generate command with no --output-* (all default).
+        let mut cmd = GenerateCmd {
+            root: PathBuf::from("."),
+            output_credits: None,
+            output_notices: None,
+            output_bom: None,
+        };
+
+        // When anchoring against a cwd.
+        cmd.anchor_paths(Path::new("/work"));
+
+        // Then the fields stay None (defaults are resolved later against --root).
+        assert!(cmd.output_credits.is_none());
+        assert!(cmd.output_notices.is_none());
+        assert!(cmd.output_bom.is_none());
+    }
 }

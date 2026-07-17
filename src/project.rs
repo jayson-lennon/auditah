@@ -86,6 +86,20 @@ pub fn resolve_or_error(cwd: &Path, start: &Path) -> Result<PathBuf, Report<crat
     })
 }
 
+/// Anchor a relative `path` against `cwd`, leaving absolute paths untouched.
+///
+/// Command path arguments (`source`/`target`/`--output-*`) arrive raw from clap;
+/// this anchors them against the process cwd captured at startup so command code
+/// never reads the environment itself and always operates on absolute paths.
+#[must_use]
+pub fn anchor(cwd: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    }
+}
+
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
@@ -133,6 +147,26 @@ mod tests {
 
         // Then the search begins at the start dir and returns it immediately.
         assert_eq!(found.as_deref(), Some(Path::new("/proj")));
+    }
+
+    #[test]
+    fn anchor_joins_relative_path_against_cwd() {
+        // Given a relative path and a cwd.
+        // When anchoring.
+        let anchored = anchor(Path::new("/game"), Path::new("assets/sword.glb"));
+
+        // Then the relative path is joined against cwd.
+        assert_eq!(anchored, PathBuf::from("/game/assets/sword.glb"));
+    }
+
+    #[test]
+    fn anchor_leaves_absolute_path_untouched() {
+        // Given an absolute path and a cwd.
+        // When anchoring.
+        let anchored = anchor(Path::new("/game"), Path::new("/abs/sword.glb"));
+
+        // Then the absolute path is returned as-is.
+        assert_eq!(anchored, PathBuf::from("/abs/sword.glb"));
     }
     #[test]
     fn resolve_or_error_anchors_relative_start_against_injected_cwd() {

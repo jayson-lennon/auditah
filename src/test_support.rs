@@ -308,6 +308,22 @@ impl FsBackend for FakeFs {
             || state.files.keys().any(|k| k.starts_with(path))
     }
 
+    fn copy_file(&self, src: &Path, dst: &Path) -> Result<(), Report<FsError>> {
+        let mut state = self.state.lock();
+        if state.fail_writes.contains(dst) {
+            return Err(Report::new(FsError));
+        }
+        // FakeFs stores content as String, so it cannot model true binary
+        // bytes; cloning the stored entry is the faithful test contract.
+        let content = state
+            .files
+            .get(src)
+            .cloned()
+            .ok_or_else(|| Report::new(FsError))?;
+        state.files.insert(dst.to_path_buf(), content);
+        Ok(())
+    }
+
     fn name(&self) -> &'static str {
         "FakeFs"
     }
@@ -635,5 +651,35 @@ mod tests {
         assert_eq!(services.fs.read_to_string(p).unwrap(), "hi");
         // And clock is FakeClock::fixed(0) (now_epoch_secs == 0).
         assert_eq!(services.clock.now_epoch_secs().unwrap(), 0);
+    }
+
+    // --- copy_file ---
+
+    #[test]
+    fn copy_file_clones_stored_entry_to_destination() {
+        // Given a fake filesystem with a seeded source file.
+        let fs = FakeFs::with_files([("/lib/sword.glb", "asset-bytes")]);
+        let dst = Path::new("/game/sword.glb");
+
+        // When copying the source to a new destination.
+        fs.copy_file(Path::new("/lib/sword.glb"), dst)
+            .expect("copy");
+
+        // Then the destination holds an independent copy of the source content.
+        assert_eq!(fs.read_to_string(dst).expect("read dst"), "asset-bytes");
+    }
+
+    #[test]
+    fn copy_file_surfaces_error_when_destination_write_is_faulted() {
+        // Given a fake filesystem faulting writes to the destination.
+        let fs =
+            FakeFs::with_files([("/lib/sword.glb", "asset-bytes")]).fail_write("/game/sword.glb");
+
+        // When copying into the faulted destination.
+        let result = fs.copy_file(Path::new("/lib/sword.glb"), Path::new("/game/sword.glb"));
+
+        // Then the copy surfaces an FsError and nothing is written.
+        assert!(result.is_err());
+        assert!(!fs.exists(Path::new("/game/sword.glb")));
     }
 }

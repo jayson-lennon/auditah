@@ -58,7 +58,11 @@ pub fn sidecar_path(asset: &Path) -> PathBuf {
 
 /// Walk up from the asset's directory; return the path of the first
 /// `_manifest.toml` found, or `None` if none exists up to (and including) `root`.
-fn find_nearest_manifest(services: &Services, asset: &Path, root: &Path) -> Option<PathBuf> {
+pub(crate) fn find_nearest_manifest(
+    services: &Services,
+    asset: &Path,
+    root: &Path,
+) -> Option<PathBuf> {
     let start = asset.parent()?;
     let root_parent = root.parent().unwrap_or(root);
     let mut dir = Some(start);

@@ -65,6 +65,18 @@ pub struct LicenseAssignCmd {
     pub root: Option<PathBuf>,
 }
 
+impl LicenseAssignCmd {
+    /// Anchor relative path arguments against `cwd` in place: `target` and the
+    /// optional `--root`. Must run BEFORE dispatch's root resolution, which probes
+    /// `target` on disk.
+    pub fn anchor_paths(&mut self, cwd: &Path) {
+        self.target = crate::project::anchor(cwd, &self.target);
+        if let Some(root) = &self.root {
+            self.root = Some(crate::project::anchor(cwd, root));
+        }
+    }
+}
+
 /// Run the `license` command.
 ///
 /// `cwd` is the process working directory captured at program start, used to
@@ -294,5 +306,49 @@ mod tests {
             record.year >= 2025,
             "year should be a plausible current year"
         );
+    }
+
+    #[test]
+    fn anchor_paths_joins_relative_target_and_root_against_cwd() {
+        // Given an assign command with a relative target and --root.
+        let mut cmd = LicenseAssignCmd {
+            target: PathBuf::from("assets/sword.glb"),
+            id: "MIT".to_string(),
+            author: "A".to_string(),
+            title: None,
+            year: None,
+            source: None,
+            modified: false,
+            root: Some(PathBuf::from("lib")),
+        };
+
+        // When anchoring against a cwd.
+        cmd.anchor_paths(Path::new("/work"));
+
+        // Then target and root are both joined against cwd.
+        assert_eq!(cmd.target, PathBuf::from("/work/assets/sword.glb"));
+        assert_eq!(cmd.root.as_deref(), Some(Path::new("/work/lib")));
+    }
+
+    #[test]
+    fn anchor_paths_leaves_absolute_paths_untouched() {
+        // Given an assign command with absolute target/root.
+        let mut cmd = LicenseAssignCmd {
+            target: PathBuf::from("/abs/sword.glb"),
+            id: "MIT".to_string(),
+            author: "A".to_string(),
+            title: None,
+            year: None,
+            source: None,
+            modified: false,
+            root: Some(PathBuf::from("/abs/lib")),
+        };
+
+        // When anchoring against a cwd.
+        cmd.anchor_paths(Path::new("/work"));
+
+        // Then absolute paths are returned as-is.
+        assert_eq!(cmd.target, PathBuf::from("/abs/sword.glb"));
+        assert_eq!(cmd.root.as_deref(), Some(Path::new("/abs/lib")));
     }
 }

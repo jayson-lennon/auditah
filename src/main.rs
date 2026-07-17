@@ -8,8 +8,13 @@ use std::sync::Arc;
 
 use auditah::cli::command_to_exit_code;
 use auditah::cli::{
-    audit_cmd::AuditCmd, generate_cmd::GenerateCmd, init_cmd::InitCmd,
-    license_assign_cmd::LicenseAssignCmd, license_cmd::LicenseCmd, CommandStatus,
+    audit_cmd::AuditCmd,
+    export_cmd::ExportCmd,
+    generate_cmd::GenerateCmd,
+    init_cmd::InitCmd,
+    license_assign_cmd::LicenseAssignCmd,
+    license_cmd::{LicenseCmd, LicenseSub},
+    CommandStatus,
 };
 use auditah::registry::LicenseRegistryService;
 use auditah::services::clock::{ClockService, RealClock};
@@ -33,6 +38,9 @@ struct Cli {
 enum Command {
     /// Audit license compliance of assets.
     Audit(AuditCmd),
+    /// Export a licensed asset (file or directory) to a target location,
+    /// carrying its attribution metadata with it.
+    Export(ExportCmd),
     /// Generate all distribution artifacts (CREDITS.md, NOTICES.md, BOM.md).
     Generate(GenerateCmd),
     /// Write a commented `auditah.toml` at the project root.
@@ -56,9 +64,9 @@ enum Command {
 /// - `audit`/`generate`/`provision` walk up from `cmd.root` for a `LICENSES/`.
 /// - `assign` walks up from `--root`, the target, or the target's parent
 ///   depending on the target's filesystem type.
-fn dispatch(command: Command, cwd: &Path) -> Result<CommandStatus, Report<AppError>> {
+fn dispatch(mut command: Command, cwd: &Path) -> Result<CommandStatus, Report<AppError>> {
+    command.anchor_paths(cwd);
     let root = resolve_root(&command, cwd)?;
-
     // Create-then-configure: exactly one `FsService` is built and reused by the
     // registry and config loads. The final `services` is immutable and escapes;
     // none of the throwaway construction pieces leak into command scope.
@@ -82,9 +90,42 @@ fn dispatch(command: Command, cwd: &Path) -> Result<CommandStatus, Report<AppErr
     match command {
         Command::Audit(cmd) => auditah::cli::audit_cmd::run(&services, &cmd),
         Command::Generate(cmd) => auditah::cli::generate_cmd::run(&services, &cmd),
+        Command::Export(cmd) => auditah::cli::export_cmd::run(&services, &cmd),
         Command::Init(cmd) => auditah::cli::init_cmd::run(&services, &cmd),
         Command::License(cmd) => auditah::cli::license_cmd::run(&services, &cmd),
         Command::Assign(cmd) => auditah::cli::license_assign_cmd::run(&services, &cmd),
+    }
+}
+
+/// Anchor all relative path *arguments* (not `--root`, which is handled by
+/// [`resolve_root`]) against the process `cwd` captured at startup.
+///
+/// Runs in place on the parsed command before root resolution, so that
+/// `target`/`source`/`--output-*` values are absolute regardless of the process
+/// cwd. The `assign` arm must anchor before [`resolve_assign`] probes `target`
+/// on disk.
+fn anchor_command_paths(command: &mut Command, cwd: &Path) {
+    match command {
+        Command::Export(c) => c.anchor_paths(cwd),
+        Command::Generate(c) => c.anchor_paths(cwd),
+        Command::Assign(c)
+        | Command::License(LicenseCmd {
+            command: LicenseSub::Assign(c),
+        }) => c.anchor_paths(cwd),
+        // audit/init/provision/ack have no path args beyond --root, which is
+        // already anchored inside resolve_root.
+        Command::Audit(_)
+        | Command::Init(_)
+        | Command::License(LicenseCmd {
+            command: LicenseSub::Ack(_) | LicenseSub::Provision(_),
+        }) => {}
+    }
+}
+
+impl Command {
+    /// Anchor relative path arguments against `cwd` in place.
+    fn anchor_paths(&mut self, cwd: &Path) {
+        anchor_command_paths(self, cwd);
     }
 }
 
@@ -103,9 +144,10 @@ fn resolve_root(command: &Command, cwd: &Path) -> Result<PathBuf, Report<AppErro
         // init: no LICENSES/ walk. init is the sole creator of LICENSES/.
         Command::Init(c) => Ok(resolve_anchor(cwd, &c.root)),
 
-        // audit/generate: walk up from --root for LICENSES/.
+        // audit/generate/export: walk up from --root for LICENSES/.
         Command::Audit(c) => auditah::project::resolve_or_error(cwd, &c.root),
         Command::Generate(c) => auditah::project::resolve_or_error(cwd, &c.root),
+        Command::Export(c) => auditah::project::resolve_or_error(cwd, &c.root),
 
         // Top-level assign shortcut: same discovery as `license assign`.
         Command::Assign(c) => resolve_assign(cwd, c),
@@ -138,13 +180,9 @@ fn resolve_assign(
 }
 
 /// Anchor a relative `path` against `cwd`, leaving absolute paths untouched.
-/// Used by `init`/`ack`, which take `--root` verbatim without a `LICENSES/` walk.
+/// Thin wrapper over [`auditah::project::anchor`]; see its docs.
 fn resolve_anchor(cwd: &Path, path: &Path) -> PathBuf {
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        cwd.join(path)
-    }
+    auditah::project::anchor(cwd, path)
 }
 
 fn main() {
