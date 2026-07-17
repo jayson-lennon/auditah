@@ -129,7 +129,7 @@ pub(crate) fn render_notices(licenses: &[LicenseText]) -> String {
     }
 
     for lic in licenses {
-        let _ = writeln!(out, "## {} — {}\n", lic.id, lic.name);
+        let _ = writeln!(out, "## {}: {}\n", lic.id, lic.name);
         out.push_str("```text\n");
         out.push_str(&lic.text);
         if !lic.text.ends_with('\n') {
@@ -199,7 +199,7 @@ mod tests {
         let out = render_notices(&licenses);
 
         // Then the header and text appear.
-        assert!(out.contains("## MIT — MIT License"));
+        assert!(out.contains("## MIT: MIT License"));
         assert!(out.contains("```text"));
         assert!(out.contains("MIT license body text"));
         assert!(out.contains("```"));
@@ -221,9 +221,9 @@ mod tests {
         let out = render_notices(&licenses);
 
         // Then both sections appear (BTreeMap ordering = sorted by id).
-        assert!(out.contains("## CC-BY-4.0 — Creative Commons Attribution 4.0"));
+        assert!(out.contains("## CC-BY-4.0: Creative Commons Attribution 4.0"));
         assert!(out.contains("CC-BY body"));
-        assert!(out.contains("## MIT — MIT License"));
+        assert!(out.contains("## MIT: MIT License"));
         assert!(out.contains("MIT body"));
     }
 

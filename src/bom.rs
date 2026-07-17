@@ -37,6 +37,17 @@ pub struct BomCtx<'a> {
     pub root: &'a Path,
 }
 
+/// One asset tracked by the BOM: its path and whether it has been modified
+/// from the original.
+///
+/// `modified` is captured so the share-alike action item can list the specific
+/// assets that carry a ship-under-same-license obligation.
+#[derive(Debug, Clone)]
+pub(crate) struct BomAsset {
+    path: PathBuf,
+    modified: bool,
+}
+
 /// Per-license aggregate: metadata, base terms, and the list of assets under it.
 #[derive(Debug, Clone)]
 pub(crate) struct LicenseSummary {
@@ -44,7 +55,7 @@ pub(crate) struct LicenseSummary {
     name: String,
     url: String,
     terms: LicenseTerms,
-    assets: Vec<PathBuf>,
+    assets: Vec<BomAsset>,
 }
 
 /// Collect per-license summaries, grouped by license id (sorted for stable output).
@@ -84,11 +95,14 @@ pub(crate) fn collect_bom(ctx: &BomCtx) -> Result<Vec<LicenseSummary>, Report<Bo
                 terms: entry.terms.clone(),
                 assets: Vec::new(),
             });
-        summary.assets.push(asset.clone());
+        summary.assets.push(BomAsset {
+            path: asset.clone(),
+            modified: record.modified,
+        });
     }
 
     for summary in by_license.values_mut() {
-        summary.assets.sort();
+        summary.assets.sort_by(|a, b| a.path.cmp(&b.path));
     }
     Ok(by_license.into_values().collect())
 }
@@ -126,7 +140,7 @@ pub(crate) fn derive_action_items(summaries: &[LicenseSummary]) -> Vec<String> {
         .collect();
     if sa_ids.len() > 1 {
         items.push(format!(
-            "⚠ Multiple share-alike licenses in use ({}) — verify derivative works can satisfy both.",
+            "⚠ Multiple share-alike licenses in use ({}) - verify derivative works can satisfy both.",
             sa_ids.join(", ")
         ));
     }
@@ -134,37 +148,54 @@ pub(crate) fn derive_action_items(summaries: &[LicenseSummary]) -> Vec<String> {
     // Per-license action items (sorted by id, which collect_bom already ensures).
     for s in summaries {
         if s.terms.requires_source_disclosure {
-            items.push(format!(
-                "Offer corresponding source for {} {} asset(s): {}",
+            let header = format!(
+                "Offer corresponding source for {} {} asset(s):",
                 s.assets.len(),
-                s.id,
-                format_asset_paths(&s.assets)
-            ));
+                s.id
+            );
+            let assets: Vec<&BomAsset> = s.assets.iter().collect();
+            items.push(format_asset_list(header, &assets));
         }
         if s.terms.requires_license_notice {
             items.push(format!(
-                "Reproduce license text for {} in your distribution — see NOTICES.md",
+                "Reproduce license text for {} in your distribution (see NOTICES.md)",
                 s.id
             ));
         }
         if s.terms.derivatives == crate::model::terms::Derivatives::ShareAlike {
-            items.push(format!(
-                "Share-alike: modified {} assets must ship under {}",
-                s.id, s.id
-            ));
+            let modified: Vec<&BomAsset> = s.assets.iter().filter(|a| a.modified).collect();
+            if modified.is_empty() {
+                items.push(format!(
+                    "Share-alike: any modified {} assets must ship under {}",
+                    s.id, s.id
+                ));
+            } else {
+                let header = format!(
+                    "Share-alike: {} modified {} asset(s) must ship under {}:",
+                    modified.len(),
+                    s.id,
+                    s.id
+                );
+                items.push(format_asset_list(header, &modified));
+            }
         }
     }
 
     items
 }
 
-/// Format asset paths as a comma-separated list of display paths (relative to root where possible).
-fn format_asset_paths(paths: &[PathBuf]) -> String {
-    paths
-        .iter()
-        .map(|p| p.display().to_string())
-        .collect::<Vec<_>>()
-        .join(", ")
+/// Build a multi-line action item: the given `header` line followed by each
+/// asset path indented four spaces on its own line.
+///
+/// Returned as a single `String` so the numbered-list renderer prefixes only
+/// the header line.
+fn format_asset_list(header: String, assets: &[&BomAsset]) -> String {
+    use std::fmt::Write as _;
+    let mut out = header;
+    for a in assets {
+        let _ = writeln!(out, "\n    {}", a.path.display());
+    }
+    out
 }
 
 /// Render the collected license summaries as a BOM.md string.
@@ -182,7 +213,7 @@ pub(crate) fn render_bom(summaries: &[LicenseSummary]) -> String {
     for s in summaries {
         let _ = writeln!(
             out,
-            "### {} ({}) — {} asset(s)",
+            "### {} ({}): {} asset(s)",
             s.name,
             s.id,
             s.assets.len()
@@ -297,7 +328,10 @@ mod tests {
             url: format!("https://example.com/{id}"),
             terms,
             assets: (0..n_assets)
-                .map(|i| PathBuf::from(format!("/proj/asset{i}.glb")))
+                .map(|i| BomAsset {
+                    path: PathBuf::from(format!("/proj/asset{i}.glb")),
+                    modified: false,
+                })
                 .collect(),
         }
     }
@@ -327,12 +361,13 @@ mod tests {
         // When deriving action items.
         let items = derive_action_items(&summaries);
 
-        // Then there is one item mentioning both asset paths.
+        // Then there is one item listing each asset path on its own indented line.
         assert_eq!(items.len(), 1);
-        assert!(items[0].contains("Offer corresponding source"));
-        assert!(items[0].contains("GPL-3.0-only"));
-        assert!(items[0].contains("asset0.glb"));
-        assert!(items[0].contains("asset1.glb"));
+        assert!(items[0].contains("Offer corresponding source for 2 GPL-3.0-only asset(s):"));
+        // No comma-joined single line: each path sits on its own 4-space-indented line.
+        assert!(items[0].contains("\n    /proj/asset0.glb"));
+        assert!(items[0].contains("\n    /proj/asset1.glb"));
+        assert!(!items[0].contains("asset0.glb, asset1.glb"));
     }
 
     #[test]
@@ -361,10 +396,42 @@ mod tests {
         // When deriving action items.
         let items = derive_action_items(&summaries);
 
-        // Then there is one share-alike item and no conflict warning.
-        assert_eq!(items.len(), 1);
         assert!(items[0].contains("Share-alike"));
         assert!(!items[0].contains("Multiple share-alike"));
+    }
+
+    #[test]
+    fn derive_action_items_share_alike_lists_modified_assets() {
+        // Given a share-alike license with one modified asset out of two.
+        let terms = LicenseTerms::permissive().with_derivatives(Derivatives::ShareAlike);
+        let summaries = vec![LicenseSummary {
+            id: "LicenseRef-Mpl".to_string(),
+            name: "LicenseRef-Mpl Name".to_string(),
+            url: "https://example.com/LicenseRef-Mpl".to_string(),
+            terms,
+            assets: vec![
+                BomAsset {
+                    path: PathBuf::from("/proj/mesh.glb"),
+                    modified: true,
+                },
+                BomAsset {
+                    path: PathBuf::from("/proj/sound.wav"),
+                    modified: false,
+                },
+            ],
+        }];
+
+        // When deriving action items.
+        let items = derive_action_items(&summaries);
+
+        // Then one share-alike item lists only the modified asset.
+        assert_eq!(items.len(), 1);
+        assert!(
+            items[0].contains("1 modified LicenseRef-Mpl asset(s) must ship under LicenseRef-Mpl:")
+        );
+        assert!(items[0].contains("\n    /proj/mesh.glb"));
+        // The unmodified asset is not listed.
+        assert!(!items[0].contains("sound.wav"));
     }
 
     #[test]
@@ -412,8 +479,8 @@ mod tests {
 
         // Then both sections are present with correct content.
         assert!(out.contains("## Licenses in use"));
-        assert!(out.contains("### MIT Name (MIT) — 2 asset(s)"));
-        assert!(out.contains("### GPL-3.0-only Name (GPL-3.0-only) — 1 asset(s)"));
+        assert!(out.contains("### MIT Name (MIT): 2 asset(s)"));
+        assert!(out.contains("### GPL-3.0-only Name (GPL-3.0-only): 1 asset(s)"));
         assert!(out.contains("## Action items"));
         assert!(out.contains("Offer corresponding source for 1 GPL-3.0-only asset"));
     }

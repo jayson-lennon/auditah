@@ -94,7 +94,7 @@ pub fn run(cmd: &LicenseCmd) -> Result<CommandStatus, Report<AppError>> {
 
             if placeholder {
                 eprintln!(
-                    "warning: no authored grid for {canonical} — wrote a default_fail() \
+                    "warning: no authored grid for {canonical} - wrote a default_fail() \
                      placeholder (manual_review = true). Fill in LICENSES/{canonical}.toml \
                      and add the id to `manual_review_acknowledged` when ready."
                 );

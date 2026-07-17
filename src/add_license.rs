@@ -89,7 +89,7 @@ fn write_header(s: &mut String, id: &str) {
     .unwrap();
     writeln!(
         s,
-        "# that file exists — so after editing this grid, create:"
+        "# that file exists - so after editing this grid, create:"
     )
     .unwrap();
     writeln!(s, "#").unwrap();
@@ -137,17 +137,17 @@ fn write_terms(s: &mut String, terms: &LicenseTerms) {
     writeln!(s, "# Derivatives dimension. One of:").unwrap();
     writeln!(
         s,
-        "#   \"disallowed\"  — no derivatives permitted (CC-BY-ND)."
+        "#   \"disallowed\"  - no derivatives permitted (CC-BY-ND)."
     )
     .unwrap();
     writeln!(
         s,
-        "#   \"allowed\"     — derivatives permitted under any terms (MIT, CC-BY, CC0)."
+        "#   \"allowed\"     - derivatives permitted under any terms (MIT, CC-BY, CC0)."
     )
     .unwrap();
     writeln!(
         s,
-        "#   \"share-alike\" — derivatives must use the same license (OFL, GPL, CC-BY-SA)."
+        "#   \"share-alike\" - derivatives must use the same license (OFL, GPL, CC-BY-SA)."
     )
     .unwrap();
     writeln!(s, "derivatives = \"{}\"", kebab(terms.derivatives)).unwrap();

@@ -27,7 +27,7 @@ pub struct AddError;
 pub fn render_record(record: &AttributionRecord) -> String {
     let mut doc = DocumentMut::new();
     doc.decor_mut()
-        .set_prefix("# Attribution record — see auditah docs.\n");
+        .set_prefix("# Attribution record - see auditah docs.\n");
 
     doc["title"] = value(&record.title);
     doc["author"] = value(&record.author);

@@ -62,7 +62,7 @@ pub fn run(cmd: &GenerateCmd) -> Result<CommandStatus, Report<AppError>> {
     if report.has_failures() {
         return Err(Report::new(AppError)
             .attach(format!(
-                "{} audit failure(s) — fix before generating artifacts",
+                "{} audit failure(s) - fix before generating artifacts",
                 report.fail_count()
             ))
             .attach("run `auditah audit` for details"));
@@ -70,7 +70,7 @@ pub fn run(cmd: &GenerateCmd) -> Result<CommandStatus, Report<AppError>> {
     if report.has_errors() {
         return Err(Report::new(AppError)
             .attach(format!(
-                "{} technical error(s) during audit — fix before generating artifacts",
+                "{} technical error(s) during audit - fix before generating artifacts",
                 report.error_count()
             ))
             .attach("run `auditah audit` for details"));

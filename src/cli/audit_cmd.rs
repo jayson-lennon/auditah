@@ -178,7 +178,7 @@ fn format_verdicts(verdicts: &[Verdict], verbose: bool) -> FormattedOutput {
     } else {
         stdout.push(format!("FAIL ({}):", failed.len()));
         for (asset, detail) in &failed {
-            stdout.push(format!("  {asset} — {detail}"));
+            stdout.push(format!("  {asset} - {detail}"));
         }
     }
     stdout.push(format!(
@@ -197,7 +197,7 @@ fn format_verdicts(verdicts: &[Verdict], verbose: bool) -> FormattedOutput {
     } else {
         stderr.push(format!("ERRORS ({}):", errors.len()));
         for (path, detail) in &errors {
-            stderr.push(format!("  {path} — {detail}"));
+            stderr.push(format!("  {path} - {detail}"));
         }
         Err(Report::new(AppError).attach(format!(
             "{} technical error(s) surfaced during the audit",

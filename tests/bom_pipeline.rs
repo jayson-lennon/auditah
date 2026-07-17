@@ -476,3 +476,133 @@ fn bom_has_no_share_alike_conflict_warning() {
     // Then there is no share-alike conflict warning.
     assert!(!bom.contains("Multiple share-alike"));
 }
+
+/// True if some line of `bom` both starts with 4 spaces and contains `needle`.
+/// Robust to the BOM rendering absolute asset paths.
+fn indented_line_contains(bom: &str, needle: &str) -> bool {
+    bom.lines()
+        .any(|l| l.starts_with("    ") && l.contains(needle))
+}
+
+// A modified share-alike asset surfaces in the share-alike action item,
+// listed on its own 4-space-indented line.
+#[test]
+fn modified_share_alike_asset_listed_in_action_item() {
+    // Given a share-alike asset marked modified = true.
+    let tree = temptree! {
+        "mesh.glb": "binary",
+        "mesh.glb.attr.toml": r#"
+title = "Mesh"
+author = "Maker"
+year = 2022
+license = "LicenseRef-Mpl"
+source = "https://m"
+modified = true
+"#,
+    };
+    let root = tree.path();
+    let svc = services_with([LicenseSpec::new("LicenseRef-Mpl")
+        .name("MPL")
+        .terms(share_alike_terms())]);
+    let cfg = config();
+
+    // When generating the BOM.
+    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-Mpl"]);
+
+    // Then the share-alike item lists the modified asset on its own indented line.
+    assert!(
+        bom.contains("1 modified LicenseRef-Mpl asset(s) must ship under LicenseRef-Mpl:"),
+        "modified-asset share-alike header missing:\n{bom}"
+    );
+    assert!(
+        indented_line_contains(&bom, "mesh.glb"),
+        "modified asset not on its own indented line:\n{bom}"
+    );
+}
+
+// A source-disclosure license with multiple assets lists each path on its
+// own 4-space-indented line, alpha-sorted, with a count header.
+#[test]
+fn source_disclosure_lists_each_asset_on_own_indented_line() {
+    // Given a source-disclosure license with two assets.
+    let tree = temptree! {
+        "zeta.glb": "binary",
+        "zeta.glb.attr.toml": r#"
+title = "Zeta"
+author = "Zed"
+year = 2022
+license = "LicenseRef-Gpl"
+source = "https://z"
+"#,
+        "alpha.glb": "binary",
+        "alpha.glb.attr.toml": r#"
+title = "Alpha"
+author = "Al"
+year = 2022
+license = "LicenseRef-Gpl"
+source = "https://a"
+"#,
+    };
+    let root = tree.path();
+    let svc = services_with([LicenseSpec::new("LicenseRef-Gpl")
+        .name("GPL")
+        .terms(source_disclosure_terms())]);
+    let cfg = config();
+
+    // When generating the BOM.
+    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-Gpl"]);
+
+    // Then the count header and each asset appear, each on its own indented line.
+    assert!(
+        bom.contains("Offer corresponding source for 2 LicenseRef-Gpl asset(s):"),
+        "count header missing:\n{bom}"
+    );
+    assert!(
+        indented_line_contains(&bom, "alpha.glb") && indented_line_contains(&bom, "zeta.glb"),
+        "asset paths not each on their own indented line:\n{bom}"
+    );
+    // Alpha (sorted first) precedes zeta in the output.
+    assert!(
+        bom.find("alpha.glb") < bom.find("zeta.glb"),
+        "assets not alpha-sorted:\n{bom}"
+    );
+    assert!(
+        !bom.contains("alpha.glb, zeta.glb"),
+        "assets should not be comma-joined:\n{bom}"
+    );
+}
+
+// A share-alike license with no modified assets shows the generic reminder and
+// does not list any asset path under the share-alike item.
+#[test]
+fn unmodified_share_alike_asset_shows_generic_reminder() {
+    // Given one share-alike asset that is NOT modified.
+    let tree = temptree! {
+        "mesh.glb": "binary",
+        "mesh.glb.attr.toml": r#"
+title = "Mesh"
+author = "Maker"
+year = 2022
+license = "LicenseRef-CcBySa"
+source = "https://m"
+"#,
+    };
+    let root = tree.path();
+    let svc = services_with([LicenseSpec::new("LicenseRef-CcBySa")
+        .name("CC-BY-SA")
+        .terms(share_alike_terms())]);
+    let cfg = config();
+
+    // When generating the BOM.
+    let bom = generated(&ctx(&svc, &cfg, root), &["LicenseRef-CcBySa"]);
+
+    // Then the generic reminder is shown (no count header for modified assets).
+    assert!(
+        bom.contains("any modified LicenseRef-CcBySa assets must ship under"),
+        "generic reminder missing:\n{bom}"
+    );
+    assert!(
+        !bom.contains("modified LicenseRef-CcBySa asset(s) must ship"),
+        "should not list modified assets when none are modified:\n{bom}"
+    );
+}

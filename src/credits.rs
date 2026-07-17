@@ -145,7 +145,7 @@ pub(crate) fn render_credits(by_author: &BTreeMap<String, Vec<CreditEntry>>) -> 
         for e in entries {
             let _ = write!(
                 out,
-                "- **{}** ({}), {} — [source]({})",
+                "- **{}** ({}), {} - [source]({})",
                 e.title, e.license, e.year, e.source
             );
             if let Some(notice) = &e.modified_notice {
