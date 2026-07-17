@@ -1,0 +1,54 @@
+//! `auditah init` — scaffold a commented `auditah.toml` at the project root.
+
+use std::path::PathBuf;
+
+use crate::config::{render_config_template, CONFIG_FILENAME};
+use crate::AppError;
+use clap::Args;
+use error_stack::{Report, ResultExt};
+
+use crate::services::Services;
+
+use super::CommandStatus;
+
+/// Write a commented `auditah.toml` with default values at `<root>/auditah.toml`.
+///
+/// Refuses to overwrite an existing file unless `--force` is passed.
+#[derive(Debug, Args)]
+pub struct InitCmd {
+    /// Project root where `auditah.toml` will be written. Defaults to the
+    /// current directory.
+    #[arg(long, default_value = ".")]
+    pub root: PathBuf,
+
+    /// Overwrite an existing `auditah.toml`.
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// Run the init command.
+///
+/// # Errors
+///
+/// Returns an error if services fail, an existing file is present without
+/// `--force`, or writing the file fails.
+pub fn run(cmd: &InitCmd) -> Result<CommandStatus, Report<AppError>> {
+    let services = Services::real(&cmd.root).change_context(AppError)?;
+    let path = cmd.root.join(CONFIG_FILENAME);
+
+    if services.fs.exists(&path) && !cmd.force {
+        return Err(Report::new(AppError).attach(format!(
+            "{} already exists; pass --force to overwrite",
+            path.display()
+        )));
+    }
+
+    let content = render_config_template(&[]);
+    services
+        .fs
+        .write(&path, &content)
+        .change_context(AppError)
+        .attach("failed to write auditah.toml")?;
+    println!("init: wrote {}", path.display());
+    Ok(CommandStatus::Success)
+}

@@ -5,8 +5,8 @@
 
 use auditah::cli::command_to_exit_code;
 use auditah::cli::{
-    audit_cmd::AuditCmd, generate_cmd::GenerateCmd, init_pack_cmd::InitPackCmd,
-    license_cmd::LicenseCmd, sidecar_cmd::SidecarCmd, CommandStatus,
+    ack_cmd::AckCmd, audit_cmd::AuditCmd, generate_cmd::GenerateCmd, init_cmd::InitCmd,
+    init_pack_cmd::InitPackCmd, license_cmd::LicenseCmd, sidecar_cmd::SidecarCmd, CommandStatus,
 };
 use clap::{Parser, Subcommand};
 use error_stack::Report;
@@ -31,6 +31,10 @@ enum Command {
     License(LicenseCmd),
     /// Generate all distribution artifacts (CREDITS.md, NOTICES.md, BOM.md).
     Generate(GenerateCmd),
+    /// Write a commented `auditah.toml` at the project root.
+    Init(InitCmd),
+    /// Acknowledge a manual-review license id (adds to `manual_review_acknowledged`).
+    Ack(AckCmd),
     /// Write a directory `_manifest.toml` covering a folder.
     InitPack(InitPackCmd),
 }
@@ -41,6 +45,8 @@ fn dispatch(command: Command) -> Result<CommandStatus, Report<AppError>> {
         Command::Audit(cmd) => auditah::cli::audit_cmd::run(&cmd),
         Command::Sidecar(cmd) => auditah::cli::sidecar_cmd::run(&cmd),
         Command::License(cmd) => auditah::cli::license_cmd::run(&cmd),
+        Command::Init(cmd) => auditah::cli::init_cmd::run(&cmd),
+        Command::Ack(cmd) => auditah::cli::ack_cmd::run(&cmd),
         Command::InitPack(cmd) => auditah::cli::init_pack_cmd::run(&cmd),
         Command::Generate(cmd) => auditah::cli::generate_cmd::run(&cmd),
     }

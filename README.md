@@ -37,6 +37,8 @@ auditah init-pack path/to/pack --license CC0-1.0 --author "Quaternius"
 | `sidecar`   | Scaffold an `<asset>.attr.toml` sidecar for a single asset.                                        |
 | `license`   | Scaffold a license definition in `LICENSES/` (`.toml` grid + `.txt` text).                         |
 | `generate`  | Write CREDITS.md, NOTICES.md, BOM.md. Runs an audit gate first; no artifacts on a failing project. |
+| `init`     | Write a commented `auditah.toml` at the project root (refuses overwrite unless `--force`).         |
+| `ack`      | Acknowledge a manual-review license id (adds to `manual_review_acknowledged`).                      |
 | `init-pack` | Write a directory `_manifest.toml` covering a folder and its subdirs.                              |
 
 ## Project config (`auditah.toml`)
@@ -75,6 +77,29 @@ its id is listed here. Acknowledgment is permanent and silent.
 
 Configuration is optional: an absent `auditah.toml` yields defaults (all flags
 false, both lists empty).
+
+### Scaffolding config: `init` and `ack`
+
+Generate the commented template above (defaults) in the current directory:
+
+```
+auditah init            # writes ./auditah.toml; refuses if it exists
+auditah init --force    # overwrite an existing file
+auditah init --root path/to/project
+```
+
+Acknowledge a manual-review license id (suppresses its `ManualReviewRequired`
+finding) without hand-editing the toml:
+
+```
+auditah ack LicenseRef-StudioEULA   # creates auditah.toml if absent, else appends
+auditah ack MIT CC-BY-3.0            # acknowledge several ids at once
+```
+
+`ack` edits `manual_review_acknowledged` in-place via a lossless TOML AST, so
+existing comments, formatting, and key order are preserved. Re-acknowledging an id
+already present is a no-op (idempotent). Ids unknown to both `LICENSES/` and the
+well-known SPDX corpus print a warning on stderr but are still written (fail-open).
 
 ## Attribution that travels with the asset
 
