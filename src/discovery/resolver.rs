@@ -138,31 +138,8 @@ pub fn read_attribution(
         .attach(path.display().to_string())
 }
 
-/// Detect orphan sidecars: a sidecar `<asset>.attr.toml` whose `<asset>` file
-/// does not exist. Returns the paths of orphaned sidecars.
-///
-/// # Errors
-///
-/// Returns an error if the filesystem walk fails.
-#[must_use]
-pub fn find_orphan_sidecars(fs: &FsService, all_files: &[PathBuf]) -> Vec<PathBuf> {
-    all_files
-        .iter()
-        .filter(|p| {
-            let s = p.to_string_lossy();
-            s.ends_with(SIDECAR_SUFFIX)
-        })
-        .filter(|sidecar| {
-            // Strip the suffix to recover the asset path; check existence via service.
-            let asset = strip_sidecar_suffix(sidecar);
-            !fs.exists(&asset)
-        })
-        .cloned()
-        .collect()
-}
-
 /// Remove the `.attr.toml` suffix from a sidecar path, returning the asset path.
-fn strip_sidecar_suffix(sidecar: &Path) -> PathBuf {
+pub(crate) fn strip_sidecar_suffix(sidecar: &Path) -> PathBuf {
     let s = sidecar.to_string_lossy();
     let stripped = s.strip_suffix(SIDECAR_SUFFIX).unwrap_or(&s);
     PathBuf::from(stripped)
@@ -300,27 +277,5 @@ source = "https://example.com"
         // Then the sidecar wins over the manifest.
         assert!(matches!(r.source, ResolutionSource::Sidecar(_)));
         assert_eq!(r.record.unwrap().license, "LicenseRef-Mit");
-    }
-
-    #[test]
-    fn orphan_sidecar_detected_when_asset_missing() {
-        // Given a filesystem with a real asset+sidecar and an orphan sidecar.
-        let fs = fs_with(&[
-            ("/proj/real.glb", ""),
-            ("/proj/real.glb.attr.toml", ""),
-            ("/proj/ghost.glb.attr.toml", ""),
-        ]);
-        let all = vec![
-            PathBuf::from("/proj/ghost.glb.attr.toml"),
-            PathBuf::from("/proj/real.glb"),
-            PathBuf::from("/proj/real.glb.attr.toml"),
-        ];
-
-        // When detecting orphan sidecars.
-        let orphans = find_orphan_sidecars(&fs, &all);
-
-        // Then only the ghost sidecar is reported as orphan.
-        assert_eq!(orphans.len(), 1);
-        assert!(orphans[0].to_string_lossy().contains("ghost"));
     }
 }

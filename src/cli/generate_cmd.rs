@@ -67,6 +67,14 @@ pub fn run(cmd: &GenerateCmd) -> Result<CommandStatus, Report<AppError>> {
             ))
             .attach("run `auditah audit` for details"));
     }
+    if report.has_errors() {
+        return Err(Report::new(AppError)
+            .attach(format!(
+                "{} technical error(s) during audit — fix before generating artifacts",
+                report.error_count()
+            ))
+            .attach("run `auditah audit` for details"));
+    }
 
     let output_credits = cmd
         .output_credits

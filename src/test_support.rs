@@ -25,7 +25,7 @@ use error_stack::Report;
 use parking_lot::Mutex;
 
 use crate::services::clock::{ClockBackend, ClockError};
-use crate::services::fs::{FsBackend, FsError};
+use crate::services::fs::{DirEntry, FsBackend, FsError};
 
 /// Internal mutable state behind a single lock.
 #[derive(Debug, Default)]
@@ -35,6 +35,16 @@ struct FsState {
     fail_writes: HashSet<PathBuf>,
     fail_walks: HashSet<PathBuf>,
     fail_list_dirs: HashSet<PathBuf>,
+    /// Per-path count of `list_dir`/`list_dir_typed` calls. Lets tests
+    /// assert IO-contract invariants like "each directory listed once".
+    list_dir_calls: HashMap<PathBuf, u32>,
+    /// In-flight `list_dir`/`list_dir_typed` calls (for concurrency probes).
+    list_dir_in_flight: usize,
+    /// High-water mark of concurrent `list_dir` calls observed so far.
+    list_dir_high_water: usize,
+    /// When non-zero, `list_dir` sleeps this many milliseconds (outside the
+    /// lock) so concurrent calls overlap — used to assert `--jobs` caps.
+    list_dir_delay_ms: u64,
 }
 
 impl FsState {
@@ -45,6 +55,10 @@ impl FsState {
             fail_writes: HashSet::new(),
             fail_walks: HashSet::new(),
             fail_list_dirs: HashSet::new(),
+            list_dir_calls: HashMap::new(),
+            list_dir_in_flight: 0,
+            list_dir_high_water: 0,
+            list_dir_delay_ms: 0,
         }
     }
 }
@@ -126,6 +140,49 @@ impl FakeFs {
         self.state.lock().fail_list_dirs.insert(path.into());
         self
     }
+
+    /// How many times `list_dir`/`list_dir_typed` has been called on `path`.
+    /// Lets tests assert IO-contract invariants like "each directory listed once".
+    #[must_use]
+    pub fn list_dir_call_count(&self, path: &Path) -> u32 {
+        self.state
+            .lock()
+            .list_dir_calls
+            .get(path)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Inject a sleep into every `list_dir`/`list_dir_typed` call (outside the
+    /// lock) so concurrent calls overlap. Used with
+    /// [`list_dir_high_water`](Self::list_dir_high_water) to assert `--jobs`
+    /// caps concurrent directory descents.
+    #[must_use]
+    pub fn with_list_dir_delay_ms(self, ms: u64) -> Self {
+        self.state.lock().list_dir_delay_ms = ms;
+        self
+    }
+
+    /// Maximum number of `list_dir`/`list_dir_typed` calls ever in flight at
+    /// once. Pair with [`with_list_dir_delay_ms`](Self::with_list_dir_delay_ms)
+    /// to observe the concurrency cap.
+    #[must_use]
+    pub fn list_dir_high_water(&self) -> usize {
+        self.state.lock().list_dir_high_water
+    }
+
+    /// Bump the in-flight counter + high-water; returns the configured delay.
+    fn enter_list_dir(&self) -> u64 {
+        let mut state = self.state.lock();
+        state.list_dir_in_flight += 1;
+        state.list_dir_high_water = state.list_dir_high_water.max(state.list_dir_in_flight);
+        state.list_dir_delay_ms
+    }
+
+    /// Decrement the in-flight counter.
+    fn exit_list_dir(&self) {
+        self.state.lock().list_dir_in_flight -= 1;
+    }
 }
 
 impl FsBackend for FakeFs {
@@ -151,16 +208,65 @@ impl FsBackend for FakeFs {
     }
 
     fn list_dir(&self, path: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {
-        let state = self.state.lock();
-        if state.fail_list_dirs.contains(path) {
-            return Err(Report::new(FsError));
+        let delay = self.enter_list_dir();
+        // Delay OUTSIDE the lock so concurrent calls overlap.
+        if delay > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(delay));
         }
-        Ok(state
-            .files
-            .keys()
-            .filter(|k| k.parent() == Some(path))
-            .cloned()
-            .collect())
+        let result = {
+            let mut state = self.state.lock();
+            *state.list_dir_calls.entry(path.to_path_buf()).or_insert(0) += 1;
+            if state.fail_list_dirs.contains(path) {
+                Err(Report::new(FsError))
+            } else {
+                Ok(state
+                    .files
+                    .keys()
+                    .filter(|k| k.parent() == Some(path))
+                    .cloned()
+                    .collect())
+            }
+        };
+        self.exit_list_dir();
+        result
+    }
+
+    fn list_dir_typed(&self, path: &Path) -> Result<Vec<DirEntry>, Report<FsError>> {
+        let delay = self.enter_list_dir();
+        // Delay OUTSIDE the lock so concurrent calls overlap.
+        if delay > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(delay));
+        }
+        let result = {
+            let mut state = self.state.lock();
+            *state.list_dir_calls.entry(path.to_path_buf()).or_insert(0) += 1;
+            if state.fail_list_dirs.contains(path) {
+                Err(Report::new(FsError))
+            } else {
+                let mut entries: Vec<DirEntry> = Vec::new();
+                let mut seen_subdirs: HashSet<PathBuf> = HashSet::new();
+                for k in state.files.keys() {
+                    let Some(rel) = k.strip_prefix(path).ok() else {
+                        continue;
+                    };
+                    let mut comps = rel.components();
+                    let Some(first) = comps.next() else { continue };
+                    // If `first` is the only component, it's a file directly under `path`.
+                    if comps.next().is_none() {
+                        entries.push(DirEntry::file(k.clone()));
+                    } else {
+                        // Otherwise `first` names an immediate subdir of `path`.
+                        let subdir = path.join(first);
+                        if seen_subdirs.insert(subdir.clone()) {
+                            entries.push(DirEntry::dir(subdir));
+                        }
+                    }
+                }
+                Ok(entries)
+            }
+        };
+        self.exit_list_dir();
+        result
     }
 
     fn walk(&self, root: &Path) -> Result<Vec<PathBuf>, Report<FsError>> {

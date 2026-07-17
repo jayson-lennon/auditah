@@ -14,6 +14,36 @@ use wherror::Error;
 #[error(debug)]
 pub struct FsError;
 
+/// A single entry within a directory listing, with its kind.
+///
+/// Returned by [`FsBackend::list_dir_typed`] so callers can recurse into
+/// subdirectories without a separate `exists`/stat per entry. The untyped
+/// [`FsBackend::list_dir`] is retained for callers that only want paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirEntry {
+    /// Absolute path to the entry.
+    pub path: PathBuf,
+    /// Whether this entry is a directory (vs a file).
+    pub is_dir: bool,
+}
+
+impl DirEntry {
+    /// Construct a directory entry.
+    #[must_use]
+    pub fn dir(path: PathBuf) -> Self {
+        Self { path, is_dir: true }
+    }
+
+    /// Construct a file entry.
+    #[must_use]
+    pub fn file(path: PathBuf) -> Self {
+        Self {
+            path,
+            is_dir: false,
+        }
+    }
+}
+
 /// Capability trait: read/write/list/walk the filesystem.
 ///
 /// Production uses [`RealFs`]; tests use a fake in-memory backend.
@@ -30,11 +60,21 @@ pub trait FsBackend: Send + Sync {
     /// Returns [`FsError`] if the write fails.
     fn write(&self, path: &Path, content: &str) -> Result<(), Report<FsError>>;
 
-    /// List immediate children (files + dirs) of `path`.
+    /// List immediate children (files + dirs) of `path`, untyped.
     ///
     /// # Errors
     /// Returns [`FsError`] if the directory cannot be read.
     fn list_dir(&self, path: &Path) -> Result<Vec<PathBuf>, Report<FsError>>;
+
+    /// List immediate children of `path` with their kind (file vs dir).
+    ///
+    /// This is the directory-recursion primitive: a single listing yields both
+    /// the files to audit and the subdirectories to descend into. Each directory
+    /// is therefore traversed exactly once.
+    ///
+    /// # Errors
+    /// Returns [`FsError`] if the directory cannot be read.
+    fn list_dir_typed(&self, path: &Path) -> Result<Vec<DirEntry>, Report<FsError>>;
 
     /// Recursively walk `root`, returning every file path beneath it.
     ///
@@ -96,6 +136,17 @@ impl FsService {
             .attach("failed to list directory")
     }
 
+    /// List a directory with entry kinds (file vs dir). See [`FsBackend::list_dir_typed`].
+    ///
+    /// # Errors
+    /// Propagates [`FsError`] from the backend.
+    pub fn list_dir_typed(&self, path: &Path) -> Result<Vec<DirEntry>, Report<FsError>> {
+        self.backend
+            .list_dir_typed(path)
+            .attach(path.display().to_string())
+            .attach("failed to list directory")
+    }
+
     /// Recursively walk a root. See [`FsBackend::walk`].
     ///
     /// # Errors
@@ -153,6 +204,25 @@ impl FsBackend for RealFs {
                 entries
                     .filter_map(std::result::Result::ok)
                     .map(|e| e.path())
+                    .collect()
+            })
+    }
+
+    fn list_dir_typed(&self, path: &Path) -> Result<Vec<DirEntry>, Report<FsError>> {
+        std::fs::read_dir(path)
+            .change_context(FsError)
+            .attach(path.display().to_string())
+            .map(|entries| {
+                entries
+                    .filter_map(std::result::Result::ok)
+                    .map(|e| {
+                        let is_dir = e.file_type().is_ok_and(|t| t.is_dir());
+                        if is_dir {
+                            DirEntry::dir(e.path())
+                        } else {
+                            DirEntry::file(e.path())
+                        }
+                    })
                     .collect()
             })
     }

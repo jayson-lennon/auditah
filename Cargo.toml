@@ -25,12 +25,17 @@ globset = "0.4"
 derive_more = { version = "1", features = ["debug"] }
 parking_lot = { version = "0.12.5", optional = true }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "rt"] }
+indicatif = "0.17"
 
 [dev-dependencies]
 tempfile = "3"
 temptree = "0.2"
 rstest = "0.22"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 auditah = { path = ".", features = ["test-helper"] }
+assert_cmd = "2"
+predicates = "3"
 
 [build-dependencies]
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

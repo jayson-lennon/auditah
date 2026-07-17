@@ -7,7 +7,7 @@ use std::{path::Path, sync::Arc};
 
 pub use clock::{ClockBackend, ClockError, ClockService, RealClock};
 use error_stack::{Report, ResultExt};
-pub use fs::{FsBackend, FsError, FsService, RealFs};
+pub use fs::{DirEntry, FsBackend, FsError, FsService, RealFs};
 
 use derive_more::Debug;
 use wherror::Error;

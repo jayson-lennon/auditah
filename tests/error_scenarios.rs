@@ -294,11 +294,13 @@ fn write_sidecar_errors_when_target_is_under_a_file() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn run_audit_propagates_walk_failure() {
-    // Given an audit over a FakeFs configured to fail the walk.
+fn run_audit_propagates_directory_listing_failure() {
+    // Given an audit over a FakeFs configured to fail the root directory listing.
     use auditah::audit::{run_audit, AuditCtx};
     use auditah::config::Config;
-    let fs = FsService::new(Arc::new(FakeFs::default().fail_walk(Path::new("/proj"))));
+    let fs = FsService::new(Arc::new(
+        FakeFs::default().fail_list_dir(Path::new("/proj")),
+    ));
     let registry = LicenseRegistry::empty();
     let services = Services::from_parts(fs, registry, real_clock());
     let cfg = Config {
@@ -316,10 +318,10 @@ fn run_audit_propagates_walk_failure() {
     // When running the audit.
     let result = run_audit(&ctx);
 
-    // Then the walk failure propagates as an error.
+    // Then the listing failure propagates as an error.
     assert!(
         result.is_err(),
-        "walk failure must propagate as audit error"
+        "directory listing failure must propagate as audit error"
     );
 }
 
@@ -375,6 +377,7 @@ source = "https://example.com"
     common::seed_license(root, "LicenseRef-Asset");
     let cmd = AuditCmd {
         root: root.to_path_buf(),
+        ..Default::default()
     };
 
     // When running the audit command.
@@ -396,6 +399,7 @@ fn audit_cmd_violations_returns_ok_compliance_failure() {
     // No license seeded on purpose — an uncovered asset fails regardless.
     let cmd = AuditCmd {
         root: root.to_path_buf(),
+        ..Default::default()
     };
 
     // When running the audit command.
@@ -439,6 +443,7 @@ fn audit_cmd_missing_root_returns_err_exit_two() {
     // Given a root path that does not exist.
     let cmd = AuditCmd {
         root: PathBuf::from("/nonexistent/auditah/path/xyz"),
+        ..Default::default()
     };
 
     // When running the audit command.

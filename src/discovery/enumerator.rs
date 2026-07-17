@@ -88,6 +88,38 @@ fn filter_candidates(all: &[PathBuf], root: &Path, excludes: &ExcludeMatcher) ->
         .collect()
 }
 
+/// A directory's contents partitioned by kind, after applying excludes.
+///
+/// Built from a single typed listing so the cascade recurses into `dirs` and
+/// audits `files` from one traversal of the directory.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DirListing {
+    /// Immediate subdirectory paths that are not excluded.
+    pub dirs: Vec<PathBuf>,
+    /// Immediate file paths that are not excluded.
+    pub files: Vec<PathBuf>,
+}
+
+/// Partition a typed directory listing by kind, into (dirs, files).
+///
+/// Pure kind split: no exclude filtering, no metadata classification. The
+/// cascade decides what to descend into and which files are assets vs
+/// sidecars/manifests; this helper only separates directories from files
+/// so each directory is traversed exactly once.
+#[must_use]
+pub fn partition_listing(entries: &[crate::services::DirEntry]) -> DirListing {
+    let mut dirs = Vec::new();
+    let mut files = Vec::new();
+    for e in entries {
+        if e.is_dir {
+            dirs.push(e.path.clone());
+        } else {
+            files.push(e.path.clone());
+        }
+    }
+    DirListing { dirs, files }
+}
+
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {

@@ -63,10 +63,30 @@ impl Finding {
     }
 }
 
+/// The outcome of auditing one asset: passed the checks, failed one or more,
+/// or hit a technical error (unreadable manifest, etc.).
+///
+/// One collector task consumes these in the async pipeline; the reporter
+/// routes them into the FAILED / ACCEPTED / error buckets for output.
+#[derive(Debug, Clone)]
+pub enum Verdict {
+    /// Asset passed every applicable check.
+    Accepted(PathBuf),
+    /// Asset failed one or more checks.
+    Failed(Finding),
+    /// Technical failure tied to a path (e.g. a directory whose manifest
+    /// could not be read). Printed dead last, never lost.
+    Error(PathBuf, String),
+}
+
 /// The aggregate audit result.
 #[derive(Debug, Default)]
 pub struct AuditReport {
     pub findings: Vec<Finding>,
+    /// Technical failures (unreadable manifest, walk fault, task panic), kept
+    /// distinct from compliance findings so they surface as exit-2 errors,
+    /// never as compliance FAILs and never lost.
+    pub errors: Vec<(PathBuf, String)>,
 }
 
 impl AuditReport {
@@ -88,6 +108,23 @@ impl AuditReport {
     /// Add a finding.
     pub fn push(&mut self, finding: Finding) {
         self.findings.push(finding);
+    }
+
+    /// Record a technical error tied to a path.
+    pub fn push_error(&mut self, path: PathBuf, detail: impl Into<String>) {
+        self.errors.push((path, detail.into()));
+    }
+
+    /// Whether any technical error was recorded.
+    #[must_use]
+    pub fn has_errors(&self) -> bool {
+        !self.errors.is_empty()
+    }
+
+    /// Count of technical errors.
+    #[must_use]
+    pub fn error_count(&self) -> usize {
+        self.errors.len()
     }
 }
 
@@ -162,5 +199,20 @@ mod tests {
         // Then has_failures is true and fail_count is 1.
         assert!(has_failures);
         assert_eq!(r.fail_count(), 1);
+    }
+
+    #[test]
+    fn technical_error_does_not_count_as_compliance_failure() {
+        // Given a report with only a technical error (no findings).
+        let mut r = AuditReport::default();
+        r.push_error(asset(), "unreadable manifest");
+
+        // When inspecting the report.
+        // Then it has an error but is NOT a compliance failure — the two are
+        // distinct buckets so technical faults surface as exit-2, not exit-1.
+        assert!(r.has_errors());
+        assert_eq!(r.error_count(), 1);
+        assert!(!r.has_failures());
+        assert_eq!(r.fail_count(), 0);
     }
 }
