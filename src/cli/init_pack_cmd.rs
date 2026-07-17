@@ -10,6 +10,7 @@ use clap::Args;
 use crate::add::write_manifest;
 use crate::discovery::resolver::MANIFEST_FILENAME;
 use crate::model::attribution::AttributionRecord;
+use crate::services::clock::ClockService;
 use crate::services::{FsService, Services};
 use crate::well_known::{self, ResolveResult};
 use error_stack::{Report, ResultExt};
@@ -134,7 +135,7 @@ fn write_manifest_record(
     let record = AttributionRecord {
         title,
         author: cmd.author.clone(),
-        year: cmd.year.unwrap_or_else(current_year),
+        year: cmd.year.unwrap_or_else(|| year_from_clock(&services.clock)),
         license: cmd.license.clone(),
         source: cmd.source.clone().unwrap_or_default(),
         modified: false,
@@ -142,15 +143,6 @@ fn write_manifest_record(
         overrides: Overrides::default(),
     };
     write_manifest(services, cwd, &record).change_context(AppError)
-}
-
-/// Best-effort current year as `u16`, falling back to 2025 on clock skew.
-fn current_year() -> u16 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(2025, |d| {
-            u16::try_from(d.as_secs() / 31_557_600).unwrap_or(2025)
-        })
 }
 
 /// Build a real-fs `FsService` just for discovery (before services exist).
@@ -179,19 +171,107 @@ fn find_licenses_dir(fs: &FsService, start: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Resolve the copyright year when `--year` is omitted: read the wall
+/// clock via `clock` and map epoch seconds to a calendar year. On a broken
+/// or pre-epoch clock, fall back to `2026`.
+fn year_from_clock(clock: &ClockService) -> u16 {
+    clock.now_epoch_secs().map_or(2026, year_from_epoch_secs)
+}
+
+/// Map Unix epoch seconds to an approximate calendar year.
+///
+/// Uses a Julian year (`31_557_600` seconds); year-boundary drift of ±1 day
+/// is acceptable for copyright-year attribution.
+fn year_from_epoch_secs(secs: u64) -> u16 {
+    u16::try_from(secs / 31_557_600 + 1970).unwrap_or(2026)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::add_license::{license_grid_path, license_text_path};
-    use crate::services::Services;
-    use crate::test_support::FakeFs;
+    use crate::test_support::{FakeClock, FakeFs};
     use std::sync::Arc;
     use temptree::temptree;
 
     fn fake_fs() -> FsService {
         FsService::new(Arc::new(FakeFs::default()))
     }
+
+    #[test]
+    fn year_from_epoch_secs_maps_a_known_past_year() {
+        // Given epoch seconds for 2019-01-01.
+        let secs = 1_546_322_400;
+
+        // When mapping to a year.
+        let year = year_from_epoch_secs(secs);
+
+        // Then the year is 2019.
+        assert_eq!(year, 2019);
+    }
+
+    #[test]
+    fn year_from_epoch_secs_maps_a_current_era_year() {
+        // Given epoch seconds for 2025-01-01.
+        let secs = 1_735_689_600;
+
+        // When mapping to a year.
+        let year = year_from_epoch_secs(secs);
+
+        // Then the year is 2025.
+        assert_eq!(year, 2025);
+    }
+
+    #[test]
+    fn year_from_epoch_secs_maps_epoch_zero_to_1970() {
+        // Given the epoch itself.
+        let secs = 0;
+
+        // When mapping to a year.
+        let year = year_from_epoch_secs(secs);
+
+        // Then the year is 1970, not 0 (the original off-by-1970 bug).
+        assert_eq!(year, 1970);
+    }
+
+    #[test]
+    fn year_from_epoch_secs_falls_back_when_future_overflows_u16() {
+        // Given an absurd future timestamp that would overflow u16.
+        let secs = u64::MAX;
+
+        // When mapping to a year.
+        let year = year_from_epoch_secs(secs);
+
+        // Then the year is the 2026 fallback rather than panicking.
+        assert_eq!(year, 2026);
+    }
+
+    #[test]
+    fn year_from_clock_maps_a_fixed_instant_to_its_year() {
+        // Given a FakeClock pinned to a 2019-01-01 epoch-second instant.
+        let clock = ClockService::new(Arc::new(FakeClock::fixed(1_546_322_400)));
+
+        // When resolving the default year from the clock.
+        let year = year_from_clock(&clock);
+
+        // Then the year is 2019 (not 56 / 0 — the original bug).
+        assert_eq!(year, 2019);
+    }
+
+    #[test]
+    fn year_from_clock_falls_back_to_2026_when_clock_is_broken() {
+        // Given a FakeClock that always fails (models a pre-epoch clock).
+        let clock = ClockService::new(Arc::new(FakeClock::broken()));
+
+        // When resolving the default year from the broken clock.
+        let year = year_from_clock(&clock);
+
+        // Then the year is the 2026 fallback rather than erroring or panicking.
+        assert_eq!(year, 2026);
+    }
+
+    // --- find_licenses_dir discovery ---
 
     #[test]
     fn find_licenses_dir_resolves_ancestor() {

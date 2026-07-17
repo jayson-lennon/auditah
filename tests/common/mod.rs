@@ -15,8 +15,9 @@ use auditah::config::Config;
 use auditah::model::attribution::AttributionRecord;
 use auditah::model::terms::{Derivatives, LicenseTerms, Overrides};
 use auditah::registry::{LicenseRegistry, LicenseSpec};
+use auditah::services::clock::RealClock;
 use auditah::services::fs::{FsService, RealFs};
-use auditah::services::Services;
+use auditah::services::{ClockService, Services};
 
 /// Build a real-filesystem [`Services`] with the given registry.
 ///
@@ -26,6 +27,7 @@ fn services_from(registry: LicenseRegistry) -> Services {
     Services {
         fs: FsService::new(Arc::new(RealFs::new())),
         registry,
+        clock: ClockService::new(Arc::new(RealClock::new())),
     }
 }
 

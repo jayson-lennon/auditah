@@ -1,9 +1,11 @@
 //! Service layer: dependency-injection container + backend abstractions.
 
+pub mod clock;
 pub mod fs;
 
 use std::{path::Path, sync::Arc};
 
+pub use clock::{ClockBackend, ClockError, ClockService, RealClock};
 use error_stack::{Report, ResultExt};
 pub use fs::{FsBackend, FsError, FsService, RealFs};
 
@@ -25,6 +27,7 @@ pub struct ServicesError;
 pub struct Services {
     pub fs: FsService,
     pub registry: LicenseRegistry,
+    pub clock: ClockService,
 }
 
 impl Services {
@@ -40,14 +43,19 @@ impl Services {
             fs: FsService::new(Arc::new(RealFs::new())),
             registry: LicenseRegistry::load(&FsService::new(Arc::new(RealFs::new())), root)
                 .change_context(ServicesError)?,
+            clock: ClockService::new(Arc::new(RealClock::new())),
         })
     }
 
     /// Build a service container from explicit parts. Used by tests and by
     /// callers that construct pieces independently (e.g. command runners).
     #[must_use]
-    pub fn from_parts(fs: FsService, registry: LicenseRegistry) -> Self {
-        Self { fs, registry }
+    pub fn from_parts(fs: FsService, registry: LicenseRegistry, clock: ClockService) -> Self {
+        Self {
+            fs,
+            registry,
+            clock,
+        }
     }
 }
 
@@ -78,6 +86,7 @@ mod tests {
         let services = Services {
             fs: FsService::new(Arc::new(FakeFs::default())),
             registry: LicenseRegistry::empty(),
+            clock: ClockService::new(Arc::new(RealClock::new())),
         };
         let path = Path::new("/tmp/fake.txt");
 
