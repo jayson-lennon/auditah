@@ -19,28 +19,27 @@ auditah audit
 # Generate CREDITS.md, NOTICES.md, BOM.md in one shot (audit-gated: refuses on a failing project).
 auditah generate
 
-# Scaffold a sidecar for one asset (license + author required; title/year default sensibly).
-auditah license path/to/sword.glb --id CC-BY-4.0 --author "Author Name"
+# Assign a license to one asset (writes a sidecar; auto-provisions a well-known license into LICENSES/ if absent).
+auditah assign path/to/sword.glb --id CC-BY-4.0 --author "Author Name"
 
-# Cover an entire asset pack directory with one `_manifest.toml`.
-auditah license path/to/pack --id CC0-1.0 --author "Quaternius"
+# Cover an entire asset pack directory with one `_manifest.toml` (same as `license assign`).
+auditah license assign path/to/pack --id CC0-1.0 --author "Quaternius"
 
-# Scaffold a license definition: well-known SPDX id extracts text + grid from the embedded corpus.
-auditah add-license MIT
-
+# Provision a license definition into LICENSES/: well-known SPDX id extracts text + grid from the embedded corpus.
+auditah license provision MIT
 ```
 
 ## Commands
 
-| Command       | What it does                                                                                       |
-| ------------- | -------------------------------------------------------------------------------------------------- |
-| `audit`       | Audit license compliance of assets. Exit 1 if any FAIL finding, 2 on technical error.              |
-| `license`     | Scaffold an attribution sidecar (file target) or directory `_manifest.toml` (dir target); provisions the license into `LICENSES/` when well-known and absent. `--id` and `--author` required. |
-| `add-license` | Scaffold a license definition in `LICENSES/` (`.toml` grid + `.txt` text for well-known SPDX ids). |
-| `generate`    | Write CREDITS.md, NOTICES.md, BOM.md. Runs an audit gate first; no artifacts on a failing project. |
-| `init`        | Write a commented `auditah.toml` at the project root (refuses overwrite unless `--force`).         |
-| `ack`         | Acknowledge a manual-review license id (adds to `manual_review_acknowledged`).                      |
-
+| Command              | What it does                                                                                       |
+| -------------------- | -------------------------------------------------------------------------------------------------- |
+| `audit`              | Audit license compliance of assets. Exit 1 if any FAIL finding, 2 on technical error.              |
+| `assign`             | Shortcut for `license assign`. Write a sidecar (file target) or `_manifest.toml` (dir target); auto-provisions the license into `LICENSES/` when well-known and absent. `--id` and `--author` required. |
+| `generate`           | Write CREDITS.md, NOTICES.md, BOM.md. Runs an audit gate first; no artifacts on a failing project. |
+| `init`               | Write a commented `auditah.toml` at the project root (refuses overwrite unless `--force`).         |
+| `license assign`     | Same as top-level `assign`.                                                                        |
+| `license provision`  | Provision a license definition into `LICENSES/` (`.toml` grid + `.txt` text for well-known SPDX ids). |
+| `license ack`        | Acknowledge a manual-review license id (adds to `manual_review_acknowledged`).                      |
 ## Project config (`auditah.toml`)
 
 Placed at the project root:
@@ -78,7 +77,7 @@ its id is listed here. Acknowledgment is permanent and silent.
 Configuration is optional: an absent `auditah.toml` yields defaults (all flags
 false, both lists empty).
 
-### Scaffolding config: `init` and `ack`
+### Scaffolding config: `init` and `license ack`
 
 Generate the commented template above (defaults) in the current directory:
 
@@ -92,11 +91,11 @@ Acknowledge a manual-review license id (suppresses its `ManualReviewRequired`
 finding) without hand-editing the toml:
 
 ```
-auditah ack LicenseRef-StudioEULA   # creates auditah.toml if absent, else appends
-auditah ack MIT CC-BY-3.0            # acknowledge several ids at once
+auditah license ack LicenseRef-StudioEULA   # creates auditah.toml if absent, else appends
+auditah license ack MIT CC-BY-3.0            # acknowledge several ids at once
 ```
 
-`ack` edits `manual_review_acknowledged` in-place via a lossless TOML AST, so
+`license ack` edits `manual_review_acknowledged` in-place via a lossless TOML AST, so
 existing comments, formatting, and key order are preserved. Re-acknowledging an id
 already present is a no-op (idempotent). Ids unknown to both `LICENSES/` and the
 well-known SPDX corpus print a warning on stderr but are still written (fail-open).
@@ -216,8 +215,7 @@ they're handled by the distribution artifacts instead:
 
 `audit` exits non-zero on any FAIL. There are no non-blocking warnings.
 
-### `LICENSES/` directory and `add-license`
-
+### `LICENSES/` directory and `license provision`
 Every license referenced by any asset must have a full-text file at
 `LICENSES/<id>.txt` (e.g. `LICENSES/MIT.txt`, `LICENSES/LicenseRef-StudioEULA.txt`).
 These are **required**, not optional. `audit` FAILs any referenced license whose
@@ -227,15 +225,15 @@ trim a license's boilerplate) and auditah will respect your edits.
 ```sh
 # Scaffold a well-known SPDX license: extracts canonical text + authored grid
 # from the embedded corpus into LICENSES/.
-auditah add-license MIT
+auditah license provision MIT
 
 # Scaffold a custom LicenseRef-* license (default_fail() placeholder grid).
-auditah add-license --custom StudioEULA
+auditah license provision --custom StudioEULA
 ```
 
 **Workflow for a custom / bespoke license:**
 
-1. Run `auditah license --custom StudioEULA`. It writes a `default_fail()`
+1. Run `auditah license provision --custom StudioEULA`. It writes a `default_fail()`
    placeholder grid at `LICENSES/LicenseRef-StudioEULA.toml` (every permission
    false, `manual_review = true`).
 2. Edit the grid to fill in the real terms, and drop the legal text alongside at

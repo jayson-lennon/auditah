@@ -1,7 +1,7 @@
 //! Integration tests: `auditah ack` — acknowledges manual-review license ids.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use auditah::cli::ack_cmd::{run, AckCmd};
+use auditah::cli::license_ack_cmd::{run, LicenseAckCmd};
 use auditah::cli::CommandStatus;
 use auditah::config::{Config, CONFIG_FILENAME};
 use std::path::Path;
@@ -9,8 +9,8 @@ use temptree::temptree;
 
 mod common;
 
-fn ack_cmd(root: &Path, ids: &[&str]) -> AckCmd {
-    AckCmd {
+fn license_ack_cmd(root: &Path, ids: &[&str]) -> LicenseAckCmd {
+    LicenseAckCmd {
         ids: ids.iter().map(std::string::ToString::to_string).collect(),
         root: root.to_path_buf(),
     }
@@ -38,7 +38,7 @@ fn ack_creates_toml_with_id_when_absent() {
     // When acknowledging a single id.
     let status = run(
         &common::real_services(root),
-        &ack_cmd(root, &["LicenseRef-StudioEULA"]),
+        &license_ack_cmd(root, &["LicenseRef-StudioEULA"]),
     )
     .expect("ack");
 
@@ -64,7 +64,7 @@ fn ack_preserves_comments_on_existing_toml() {
     // When acknowledging an id.
     run(
         &common::real_services(root),
-        &ack_cmd(root, &["LicenseRef-Foo"]),
+        &license_ack_cmd(root, &["LicenseRef-Foo"]),
     )
     .expect("ack");
 
@@ -86,7 +86,7 @@ fn ack_is_idempotent_when_id_already_present() {
     // When acknowledging the same id again.
     run(
         &common::real_services(root),
-        &ack_cmd(root, &["LicenseRef-Foo"]),
+        &license_ack_cmd(root, &["LicenseRef-Foo"]),
     )
     .expect("ack");
 
@@ -105,7 +105,7 @@ fn ack_adds_multiple_ids_in_one_invocation() {
     // When acknowledging two ids.
     run(
         &common::real_services(root),
-        &ack_cmd(root, &["LicenseRef-A", "LicenseRef-B"]),
+        &license_ack_cmd(root, &["LicenseRef-A", "LicenseRef-B"]),
     )
     .expect("ack");
 
@@ -133,7 +133,7 @@ fn ack_unknown_id_still_writes_and_succeeds() {
     // When acknowledging an id unknown to the registry and corpus.
     let status = run(
         &common::real_services(root),
-        &ack_cmd(root, &["Totally-Made-Up-Id-XYZ"]),
+        &license_ack_cmd(root, &["Totally-Made-Up-Id-XYZ"]),
     )
     .expect("ack");
 
@@ -159,7 +159,7 @@ fn ack_preserves_other_fields_on_existing_toml() {
     // When acknowledging an id.
     run(
         &common::real_services(root),
-        &ack_cmd(root, &["LicenseRef-Foo"]),
+        &license_ack_cmd(root, &["LicenseRef-Foo"]),
     )
     .expect("ack");
 

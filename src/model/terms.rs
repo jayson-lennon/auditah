@@ -111,7 +111,7 @@ pub struct LicenseTerms {
 impl LicenseTerms {
     /// Permissive baseline: the "use however you want" shape.
     ///
-    /// Used as the default for the `add-license` template and as the starting
+    /// Used as the default for the `license provision` template and as the starting
     /// point for test fixtures. All permissions granted, no obligations,
     /// derivatives allowed, no manual review.
     #[must_use]
@@ -137,7 +137,7 @@ impl LicenseTerms {
 
     /// Maximal fail-closed baseline: the "nothing granted until you engage" shape.
     ///
-    /// Used as the default for both `add-license --custom` (a custom license whose
+    /// Used as the default for both `license provision --custom` (a custom license whose
     /// grid the user must fill in) and the placeholder grid written when a
     /// well-known license has no authored grid yet. Every permission is false,
     /// every obligation except `manual_review` is false, derivatives are

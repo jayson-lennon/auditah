@@ -6,13 +6,13 @@
 use wherror::Error;
 
 pub mod add;
-pub mod add_license;
 pub mod audit;
 pub mod bom;
 pub mod cli;
 pub mod config;
 pub mod credits;
 pub mod discovery;
+pub mod license_def;
 pub mod model;
 pub mod notices;
 pub mod project;

@@ -23,7 +23,7 @@ use super::CommandStatus;
 /// Ids unknown to both the project registry and the well-known corpus produce a
 /// warning on stderr but are still written (fail-open).
 #[derive(Debug, Args)]
-pub struct AckCmd {
+pub struct LicenseAckCmd {
     /// License id(s) to acknowledge (e.g. `LicenseRef-StudioEULA`). At least
     /// one is required.
     #[arg(num_args = 1..)]
@@ -43,7 +43,7 @@ pub struct AckCmd {
 ///
 /// Returns an error if the existing `auditah.toml` cannot be read, parsed, or
 /// written.
-pub fn run(services: &Services, cmd: &AckCmd) -> Result<CommandStatus, Report<AppError>> {
+pub fn run(services: &Services, cmd: &LicenseAckCmd) -> Result<CommandStatus, Report<AppError>> {
     let root = services.config.root();
     let path = root.join(CONFIG_FILENAME);
 
@@ -56,7 +56,7 @@ pub fn run(services: &Services, cmd: &AckCmd) -> Result<CommandStatus, Report<Ap
             .write(&path, &content)
             .change_context(AppError)
             .attach("failed to write auditah.toml")?;
-        println!("ack: wrote {} (created)", path.display());
+        println!("license ack: wrote {} (created)", path.display());
         return Ok(CommandStatus::Success);
     }
 
@@ -71,7 +71,7 @@ pub fn run(services: &Services, cmd: &AckCmd) -> Result<CommandStatus, Report<Ap
         .write(&path, &updated)
         .change_context(AppError)
         .attach("failed to write auditah.toml")?;
-    println!("ack: updated {}", path.display());
+    println!("license ack: updated {}", path.display());
     Ok(CommandStatus::Success)
 }
 

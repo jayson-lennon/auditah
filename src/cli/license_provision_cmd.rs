@@ -1,8 +1,8 @@
-//! `auditah add-license` — scaffold a license grid (+ text for well-known ids).
+//! `auditah license provision` — scaffold a license grid (+ text for well-known ids).
 
 use std::path::PathBuf;
 
-use crate::add_license::{grid_id_from_path, write_grid, write_license_template, write_text};
+use crate::license_def::{grid_id_from_path, write_grid, write_license_template, write_text};
 use crate::services::Services;
 use crate::well_known::{self, ResolveResult};
 use crate::AppError;
@@ -15,7 +15,7 @@ use super::CommandStatus;
 /// text (`.txt`) — in `<root>/LICENSES/`.
 ///
 /// Without `--custom`: sources from the embedded well-known SPDX corpus.
-/// `add-license MIT` extracts canonical `MIT.txt` + the authored `MIT.toml` grid.
+/// `license provision MIT` extracts canonical `MIT.txt` + the authored `MIT.toml` grid.
 /// If a grid isn't authored for that id, a `default_fail()` placeholder grid is
 /// written and a warning is printed (the text is still extracted).
 ///
@@ -23,7 +23,7 @@ use super::CommandStatus;
 /// defaults; refuses if `<name>` collides with a well-known SPDX id (case-
 /// insensitive).
 #[derive(Debug, Args)]
-pub struct AddLicenseCmd {
+pub struct LicenseProvisionCmd {
     /// License name. Either a well-known SPDX id (e.g. `MIT`, no flag) or a custom
     /// name (with `--custom`, prefixed as `LicenseRef-<name>`).
     pub name: String,
@@ -38,7 +38,7 @@ pub struct AddLicenseCmd {
     pub root: PathBuf,
 }
 
-/// Run the add-license command.
+/// Run the license provision command.
 ///
 /// `cwd` is the process working directory captured at program start, used to
 /// anchor a relative `--root` value. The project root is discovered by
@@ -50,14 +50,17 @@ pub struct AddLicenseCmd {
 /// Returns an error if `--root` cannot be resolved to a project root, services
 /// fail, the name doesn't resolve (unknown SPDX id), a `--custom` name collides
 /// with a well-known id, or a target file already exists.
-pub fn run(services: &Services, cmd: &AddLicenseCmd) -> Result<CommandStatus, Report<AppError>> {
+pub fn run(
+    services: &Services,
+    cmd: &LicenseProvisionCmd,
+) -> Result<CommandStatus, Report<AppError>> {
     let root = services.config.root();
 
     if cmd.custom {
         // Refuse if the custom name collides with a well-known id (case-insensitive).
         if let ResolveResult::Found(_) = well_known::resolve(&cmd.name) {
             return Err(Report::new(AppError).attach(format!(
-                "{:?} is a known SPDX id; use `add-license {}` (without --custom) to source it from the corpus",
+                "{:?} is a known SPDX id; use `license provision {}` (without --custom) to source it from the corpus",
                 cmd.name, cmd.name
             )));
         }
@@ -70,7 +73,7 @@ pub fn run(services: &Services, cmd: &AddLicenseCmd) -> Result<CommandStatus, Re
             name = cmd.name,
             id = id,
         );
-        println!("add-license: wrote {}", path.display());
+        println!("provision: wrote {}", path.display());
         return Ok(CommandStatus::Success);
     }
 
@@ -90,7 +93,7 @@ pub fn run(services: &Services, cmd: &AddLicenseCmd) -> Result<CommandStatus, Re
             let (grid_content, placeholder) = match well_known::extract_grid(&canonical) {
                 Some(g) => (g, false),
                 None => (
-                    crate::add_license::render_license_template(&canonical),
+                    crate::license_def::render_license_template(&canonical),
                     true,
                 ),
             };
@@ -105,7 +108,7 @@ pub fn run(services: &Services, cmd: &AddLicenseCmd) -> Result<CommandStatus, Re
                 );
             }
             println!(
-                "add-license: wrote {} , {}",
+                "provision: wrote {} , {}",
                 text_path.display(),
                 grid_path.display()
             );

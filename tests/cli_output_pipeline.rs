@@ -57,20 +57,20 @@ fn init_prints_wrote_line_to_stdout() {
     );
 }
 
-// Test case 2: `ack` prints its `ack: wrote`/`ack: updated` line to stdout.
+// Test case 2: `ack` prints its `license ack: wrote`/`license ack: updated` line to stdout.
 #[test]
 fn ack_prints_wrote_line_to_stdout() {
     // Given an empty temp project root.
     let root = TempDir::new().expect("tempdir");
 
     // When running `auditah ack` on a missing config (create path).
-    let (code, stdout, _stderr) = run_in(&root, &["ack", "LicenseRef-Foo"]);
+    let (code, stdout, _stderr) = run_in(&root, &["license", "ack", "LicenseRef-Foo"]);
 
     // Then stdout announces the write with the canonical ack verb.
     assert_eq!(code, 0);
     assert!(
-        stdout.contains("ack:"),
-        "expected `ack:` in stdout, got: {stdout:?}"
+        stdout.contains("license ack:"),
+        "expected `license ack:` in stdout, got: {stdout:?}"
     );
     assert!(
         stdout.contains("auditah.toml"),
@@ -87,7 +87,7 @@ fn ack_warns_on_stderr_for_unknown_id() {
     let id = "Totally-Made-Up-Id-XYZ";
 
     // When acknowledging an id that is neither in LICENSES/ nor the corpus.
-    let (code, _stdout, stderr) = run_in(&root, &["ack", id]);
+    let (code, _stdout, stderr) = run_in(&root, &["license", "ack", id]);
 
     // Then a warning naming the id is on stderr, and the command still succeeds.
     assert_eq!(code, 0);

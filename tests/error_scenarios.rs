@@ -8,10 +8,10 @@
 //!   technical failure→`Err`; plus exit-code mapping.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use auditah::cli::add_license_cmd::AddLicenseCmd;
 use auditah::cli::audit_cmd::{run as audit_run, AuditCmd};
 use auditah::cli::command_to_exit_code;
 use auditah::cli::generate_cmd::GenerateCmd;
+use auditah::cli::license_provision_cmd::LicenseProvisionCmd;
 use auditah::cli::CommandStatus;
 use auditah::discovery::enumerator::ExcludeMatcher;
 use auditah::discovery::resolver::resolve;
@@ -435,14 +435,14 @@ fn audit_cmd_violations_returns_ok_compliance_failure() {
 fn license_cmd_run_returns_err_on_write_failure() {
     // Given a license command whose file target sits under an existing file
     // (unwritable).
-    use auditah::cli::license_cmd::{run as license_run, LicenseCmd};
+    use auditah::cli::license_assign_cmd::{run as license_run, LicenseAssignCmd};
     let tree = temptree! {
         "blocker": "i am a file, not a dir",
         "LICENSES": {},
     };
     let root = tree.path();
     let target = root.join("blocker").join("x.glb");
-    let cmd = LicenseCmd {
+    let cmd = LicenseAssignCmd {
         target: target.clone(),
         id: "LicenseRef-Asset".to_string(),
         author: "A".to_string(),
@@ -554,7 +554,7 @@ fn generate_cmd_no_licenses_dir_returns_err() {
     );
 }
 
-// add-license hard-errors when no LICENSES/ exists, and does not create one.
+// license provision hard-errors when no LICENSES/ exists, and does not create one.
 #[test]
 fn license_cmd_no_licenses_dir_returns_err_and_does_not_create_licenses() {
     // Given a project root with no LICENSES/ directory anywhere up the tree.
@@ -562,18 +562,18 @@ fn license_cmd_no_licenses_dir_returns_err_and_does_not_create_licenses() {
         "sword.glb": "binary",
     };
     let root = tree.path();
-    let cmd = AddLicenseCmd {
+    let cmd = LicenseProvisionCmd {
         name: "MIT".to_string(),
         custom: false,
         root: root.to_path_buf(),
     };
 
-    // When dispatching add-license with no LICENSES/ ancestor: resolve_or_error hard-errors.
+    // When dispatching license provision with no LICENSES/ ancestor: resolve_or_error hard-errors.
     let result = auditah::project::resolve_or_error(root, &cmd.root);
     // Then it returns Err pointing the user at `auditah init`.
     assert!(
         result.is_err(),
-        "add-license must hard-error when no LICENSES/ exists"
+        "license provision must hard-error when no LICENSES/ exists"
     );
     let rendered = format!("{:?}", result.expect_err("err"));
     assert!(
@@ -583,6 +583,6 @@ fn license_cmd_no_licenses_dir_returns_err_and_does_not_create_licenses() {
     // And it must NOT have created LICENSES/ (only `init` creates it).
     assert!(
         !root.join("LICENSES").exists(),
-        "add-license must not bootstrap a LICENSES/ directory"
+        "license provision must not bootstrap a LICENSES/ directory"
     );
 }

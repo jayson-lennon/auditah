@@ -1,6 +1,6 @@
 //! Integration tests: project-root discovery (`find_project_root`).
 //!
-//! Verifies the LICENSES-dependent commands (`audit`, `generate`, `add-license`,
+//! Verifies the LICENSES-dependent commands (`audit`, `generate`, `license provision`,
 //! and the merged `license` command) resolve an *ancestor* `LICENSES/` when
 //! invoked from a subdirectory, and hard-error (no fallback) when none exists.
 //! The hard-error message contract is covered in `error_scenarios.rs`; this
@@ -10,10 +10,10 @@
 
 use std::path::{Path, PathBuf};
 
-use auditah::cli::add_license_cmd::{run as add_license_run, AddLicenseCmd};
 use auditah::cli::audit_cmd::{run as audit_run, AuditCmd};
 use auditah::cli::generate_cmd::{run as generate_run, GenerateCmd};
-use auditah::cli::license_cmd::{run as license_run, LicenseCmd};
+use auditah::cli::license_assign_cmd::{run as license_run, LicenseAssignCmd};
+use auditah::cli::license_provision_cmd::{run as license_provision_run, LicenseProvisionCmd};
 use auditah::cli::CommandStatus;
 use temptree::temptree;
 
@@ -173,10 +173,10 @@ source = "https://example.com"
     assert!(out_bom.exists(), "BOM not written");
 }
 
-// add-license resolves a LICENSES/ located above --root and writes the
+// license provision resolves a LICENSES/ located above --root and writes the
 // license grid+text into the ANCESTOR project's LICENSES/, not the subdir.
 #[test]
-fn add_license_resolves_ancestor_licenses_from_subdir() {
+fn license_provision_resolves_ancestor_licenses_from_subdir() {
     // Given a project with LICENSES/ at the root and a subdir beneath it.
     let tree = temptree! {
         "LICENSES": {},
@@ -185,20 +185,20 @@ fn add_license_resolves_ancestor_licenses_from_subdir() {
     let root = tree.path();
 
     // When adding a well-known license (MIT) with --root pointing at the subdir.
-    let cmd = AddLicenseCmd {
+    let cmd = LicenseProvisionCmd {
         name: "MIT".to_string(),
         custom: false,
         root: root.join("sub"),
     };
     let services = resolve_services(root, &cmd.root);
-    let status =
-        add_license_run(&services, &cmd).expect("add-license should resolve ancestor LICENSES");
+    let status = license_provision_run(&services, &cmd)
+        .expect("license provision should resolve ancestor LICENSES");
 
     // Then it resolves the ancestor root and writes MIT into the ancestor LICENSES/.
     assert_eq!(
         status,
         CommandStatus::Success,
-        "subdir add-license must resolve the ancestor LICENSES, not fail"
+        "subdir license provision must resolve the ancestor LICENSES, not fail"
     );
     assert!(
         root.join("LICENSES/MIT.toml").exists(),
@@ -206,7 +206,7 @@ fn add_license_resolves_ancestor_licenses_from_subdir() {
     );
     assert!(
         !root.join("sub/LICENSES").exists(),
-        "add-license must not create a LICENSES/ in the subdir"
+        "license provision must not create a LICENSES/ in the subdir"
     );
 }
 
@@ -245,7 +245,7 @@ fn license_dir_resolves_ancestor_licenses_and_writes_manifest_in_target() {
     };
     let root = tree.path();
     let target = root.join("sub");
-    let cmd = LicenseCmd {
+    let cmd = LicenseAssignCmd {
         target: target.clone(),
         id: "MIT".to_string(),
         author: "Artist".to_string(),

@@ -4,16 +4,16 @@
 
 use std::path::Path;
 
-use auditah::cli::license_cmd::{run, LicenseCmd};
+use auditah::cli::license_assign_cmd::{run, LicenseAssignCmd};
 use auditah::cli::CommandStatus;
 use temptree::temptree;
 
 mod common;
 
-/// A `LicenseCmd` builder with the required `--id`/`--author` set; the target
+/// A `LicenseAssignCmd` builder with the required `--id`/`--author` set; the target
 /// and root are the per-test variables.
-fn cmd(target: &Path, root: &Path, id: &str, author: &str) -> LicenseCmd {
-    LicenseCmd {
+fn cmd(target: &Path, root: &Path, id: &str, author: &str) -> LicenseAssignCmd {
+    LicenseAssignCmd {
         target: target.to_path_buf(),
         id: id.to_string(),
         author: author.to_string(),
@@ -136,7 +136,7 @@ fn license_provisions_well_known_id_into_licenses_when_absent() {
     );
 }
 
-// An unknown id that is absent from LICENSES/ errors with an add-license hint.
+// An unknown id that is absent from LICENSES/ errors with an license provision hint.
 #[test]
 fn license_errors_on_unknown_id_absent_from_licenses() {
     // Given a project whose LICENSES/ has no StudioEULA grid.
@@ -152,12 +152,12 @@ fn license_errors_on_unknown_id_absent_from_licenses() {
         &cmd(&root.join("sword.glb"), root, "StudioEULA", "A"),
     );
 
-    // Then it errors and points the user at `add-license --custom`.
+    // Then it errors and points the user at `license provision --custom`.
     let report = result.expect_err("unknown id must error");
     let rendered = format!("{report:?}");
     assert!(
         rendered.contains("--custom"),
-        "error must mention add-license --custom: {rendered}"
+        "error must mention license provision --custom: {rendered}"
     );
     assert!(
         rendered.contains("StudioEULA"),

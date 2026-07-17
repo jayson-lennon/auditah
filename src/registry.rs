@@ -1,6 +1,6 @@
 //! License registry: project-local `LICENSES/*.toml` definitions loaded at
 //! runtime. No embedded licenses — every license is `LicenseRef-*` authored
-//! via `add-license` (or hand-placed in `LICENSES/`).
+//! via `license provision` (or hand-placed in `LICENSES/`).
 //!
 //! Each license is two files in a single `LICENSES/` directory:
 //! `<id>.toml` (metadata + terms grid) and `<id>.txt` (full legal text). The
@@ -278,7 +278,7 @@ impl LicenseRegistryBuilder {
     }
 
     /// Write `LICENSES/<id>.toml` for each spec, then load the merged registry.
-    /// For tests that need files on disk (add-license output, load, audit text-check).
+    /// For tests that need files on disk (license provision output, load, audit text-check).
     ///
     /// # Errors
     /// Returns `RegistryError` if a TOML serialize or write fails.

@@ -1,4 +1,4 @@
-//! CLI parse-time behavior for the merged `auditah license` command.
+//! CLI parse-time behavior for the `auditah license assign` (and `assign`) command.
 //!
 //! `--id` and `--author` are required at parse time (non-`Option` clap fields),
 //! so omitting either is a parse failure with a non-zero exit before `run()`.
@@ -7,15 +7,21 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 
-// A `license` invocation missing `--id` fails at parse time (non-zero exit),
+// A `license assign` invocation missing `--id` fails at parse time (non-zero exit),
 // before any filesystem work happens.
 #[test]
 fn license_missing_id_fails_at_parse_time() {
     // Given no project setup — parse failure happens before run().
-    // When invoking `license` without `--id`.
+    // When invoking `license assign` without `--id`.
     let output = Command::cargo_bin("auditah")
         .expect("auditah binary built")
-        .args(["license", "/tmp/does-not-matter.glb", "--author", "A"])
+        .args([
+            "license",
+            "assign",
+            "/tmp/does-not-matter.glb",
+            "--author",
+            "A",
+        ])
         .output()
         .expect("run");
 
@@ -29,15 +35,21 @@ fn license_missing_id_fails_at_parse_time() {
     );
 }
 
-// A `license` invocation missing `--author` fails at parse time (non-zero exit),
+// A `license assign` invocation missing `--author` fails at parse time (non-zero exit),
 // before any filesystem work happens.
 #[test]
 fn license_missing_author_fails_at_parse_time() {
     // Given no project setup — parse failure happens before run().
-    // When invoking `license` without `--author`.
+    // When invoking `license assign` without `--author`.
     let output = Command::cargo_bin("auditah")
         .expect("auditah binary built")
-        .args(["license", "/tmp/does-not-matter.glb", "--id", "MIT"])
+        .args([
+            "license",
+            "assign",
+            "/tmp/does-not-matter.glb",
+            "--id",
+            "MIT",
+        ])
         .output()
         .expect("run");
 

@@ -4,7 +4,7 @@
 //! Once a well-known license is provisioned into `LICENSES/` (text + grid),
 //! a subsequent audit of an asset referencing it passes with no
 //! `MissingLicenseText`. The provisioning matrix itself is pinned in
-//! `src/add_license.rs` lib tests; these verify the end-to-end *consequence*.
+//! `src/license_def.rs` lib tests; these verify the end-to-end *consequence*.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auditah::audit::report::FindingCode;

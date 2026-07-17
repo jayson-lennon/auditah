@@ -5,7 +5,7 @@
 //! project root when `d/LICENSES` exists. The function returns `d` itself (the
 //! directory containing `LICENSES/`), never `LICENSES/`'s parent's parent.
 //!
-//! Used by the LICENSES-dependent commands (`audit`, `generate`, `add-license`,
+//! Used by the LICENSES-dependent commands (`audit`, `generate`, `license provision`,
 //! `init-pack`) so a subdirectory invocation resolves the real project. The
 //! unbounded walk ends naturally when [`Path::parent`] returns `None` at the
 //! filesystem root.
@@ -51,7 +51,7 @@ fn real_fs() -> FsService {
 /// injected by the caller; it is used to anchor a *relative* `start` (e.g.
 /// `.`) before canonicalizing, so the canonicalize step resolves symlinks
 /// only and never reads process cwd. Used by the LICENSES-dependent commands
-/// (`audit`, `generate`, `add-license`, `init-pack`) as their first step. The
+/// (`audit`, `generate`, `license provision`, `init-pack`) as their first step. The
 /// error message points the user at `auditah init`, since `init` is the sole
 /// creator of `LICENSES/`.
 ///

@@ -71,7 +71,7 @@ pub fn real_services(root: &Path) -> Services {
 
 /// Resolve an ancestor `LICENSES/` from `start` (anchored at `cwd`) and build
 /// a fully-real [`Services`] from the resolved root — the same wiring `main`'s
-/// `dispatch` does for LICENSES-discovering commands (audit/generate/add-license).
+/// `dispatch` does for LICENSES-discovering commands (audit/generate/license provision).
 #[must_use]
 pub fn resolve_services(cwd: &Path, start: &Path) -> Services {
     let root = auditah::project::resolve_or_error(cwd, start).expect("resolve root");
